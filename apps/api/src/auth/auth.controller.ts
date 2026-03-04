@@ -1,7 +1,7 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import type { LoginDto, RegisterTenantDto } from './auth.dto';
-import type { AuthResult } from './auth.service';
+import { LoginDto, RegisterTenantDto } from './auth.dto';
+import type { AuthResult } from './auth.service'; // AuthResult 只是 interface，保留 type 沒關係
 
 /**
  * AuthController：登入與租戶註冊 API。
