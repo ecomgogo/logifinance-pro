@@ -1,0 +1,165 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// 智匯貨代財務管家 - B2B SaaS 多租戶財務系統
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") // [新增] 這行是專門給 Prisma Migrate 用的直連通道
+}
+
+// =============================================================================
+// 租戶
+// =============================================================================
+/// 租戶：多租戶隔離的根實體，所有業務資料皆透過 tenantId 關聯至此表，以支援 PostgreSQL RLS。
+model Tenant {
+  id           String   @id @default(uuid()) @db.Uuid
+  companyName  String   @map("company_name")
+  baseCurrency String  @map("base_currency")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  users            User[]
+  businessPartners BusinessPartner[]
+  shipments        Shipment[]
+  charges          Charge[]
+  settlements      Settlement[]
+
+  @@map("tenants")
+}
+
+// =============================================================================
+// 員工
+// =============================================================================
+/// 員工：隸屬於某租戶，具備角色與抽成率，可負責業務單 (Shipment) 的銷售。
+model User {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  email          String
+  passwordHash   String   @map("password_hash") // [新增] 儲存加密密碼
+  role           UserRole // [修改] 使用強型別 Enum
+  commissionRate Decimal  @map("commission_rate") @db.Decimal(15, 4)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipments Shipment[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId]) // [新增] 租戶索引加速查詢
+  @@map("users")
+}
+
+// =============================================================================
+// 業務夥伴
+// =============================================================================
+/// 業務夥伴：客戶、供應商或代理，與應收應付明細 (Charge) 關聯。
+model BusinessPartner {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  type      PartnerType @map("type")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  charges  Charge[]
+
+  @@map("business_partners")
+}
+
+enum PartnerType {
+  Customer
+  Vendor
+  Agent
+
+  @@map("partner_type")
+}
+
+// =============================================================================
+// 業務單
+// =============================================================================
+/// 業務單：每筆貨代業務的主單，可關聯主單號 (MBL)、分單號 (HBL)，並指定負責銷售的員工。
+model Shipment {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  internalNo  String   @map("internal_no") // [新增] 系統內部唯一業務單號
+  mblNumber   String?  @map("mbl_number")
+  hblNumber   String?  @map("hbl_number")
+  type        String   @map("type")
+  salesId     String   @map("sales_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sales   User     @relation(fields: [salesId], references: [id], onDelete: Restrict)
+  charges Charge[]
+
+  @@unique([tenantId, internalNo]) // [新增] 確保同一家公司的內部單號不重複
+  @@index([tenantId, salesId])     // [新增] 銷售人員查詢自己業績時的複合索引
+  @@map("shipments")
+}
+
+// =============================================================================
+// 應收應付明細
+// =============================================================================
+/// 應收應付明細：每筆應收 (AR) 或應付 (AP) 費用，可選填關聯業務單，金額以原幣與本位幣儲存，匯率用於換算。
+model Charge {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  shipmentId   String?  @map("shipment_id") @db.Uuid
+  partnerId    String   @map("partner_id") @db.Uuid
+  arApType     ArApType @map("ar_ap_type")
+  feeCode      String   @map("fee_code")
+  currency     String
+  amount       Decimal  @db.Decimal(15, 4)
+  exchangeRate Decimal  @map("exchange_rate") @db.Decimal(15, 6)
+  baseAmount   Decimal  @map("base_amount") @db.Decimal(15, 4)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment    Shipment?   @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  partner     BusinessPartner @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  settlements Settlement[]
+  @@index([tenantId, shipmentId]) // 加速查詢某筆業務單的所有收支明細
+  @@index([tenantId, partnerId])  // 加速查詢某個客戶的應收帳款對帳單
+  @@map("charges")
+}
+
+enum ArApType {
+  AR
+  AP
+
+  @@map("ar_ap_type")
+}
+
+// =============================================================================
+// 實收實付紀錄
+// =============================================================================
+/// 實收實付紀錄：對某筆應收/應付明細的實際收款或付款紀錄，含實付金額與付款日。
+model Settlement {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  chargeId    String   @map("charge_id") @db.Uuid
+  paidAmount  Decimal  @map("paid_amount") @db.Decimal(15, 4)
+  paymentDate DateTime @map("payment_date") @db.Date
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  charge Charge @relation(fields: [chargeId], references: [id], onDelete: Restrict)
+  @@index([tenantId, chargeId])   // 加速查詢某筆應收付的結清狀態
+  @@map("settlements")
+}
+
+enum UserRole {
+  BOSS
+  SALES
+  @@map("user_role")
+}
