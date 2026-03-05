@@ -11,6 +11,7 @@ import { PartnerModule } from './partner/partner.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { UserModule } from './user/user.module'; // 🌟 引入新模組
 import { IntegrationModule } from './integration/integration.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { IntegrationModule } from './integration/integration.module';
     DashboardModule,
     UserModule, 
     IntegrationModule,
+    RedisModule, 
   ],
   controllers: [AppController],
   providers: [AppService],
