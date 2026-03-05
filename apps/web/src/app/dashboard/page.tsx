@@ -38,6 +38,7 @@ export default function DashboardPage() {
   });
 
   const router = useRouter();
+  const token = useAuthStore((state) => state.token);
   const logout = useAuthStore((state) => state.logout);
 
   // 將拉取資料的邏輯獨立出來，方便新增完後重新呼叫
@@ -57,8 +58,14 @@ export default function DashboardPage() {
   }, [logout, router]);
 
   useEffect(() => {
+    // 未登入時不呼叫受保護 API，直接回登入頁避免 401 噪音
+    if (!token) {
+      setIsLoading(false);
+      router.push('/login');
+      return;
+    }
     fetchShipments();
-  }, [fetchShipments]);
+  }, [fetchShipments, router, token]);
 
   const handleLogout = () => {
     logout();
