@@ -1,23 +1,26 @@
-// apps/api/src/main.ts
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  
-  // 1. 啟用 CORS，允許前端 (Next.js) 跨網域呼叫 API
-  app.enableCors();
 
-  // 2. 啟動全域驗證管道，嚴格過濾前端傳來的參數
+  // 🌟 1. 啟動 CORS，允許前端 3001 Port 自由進出 API
+  app.enableCors({
+    origin: ['http://localhost:3001', 'http://127.0.0.1:3001'],
+    credentials: true,
+  });
+
+  // 🛡️ 2. 啟動全域資料驗證防護 (ValidationPipe)
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,            // 自動剔除 DTO 中未定義的欄位
-      transform: true,            // 自動轉換資料型別
-      forbidNonWhitelisted: true, // 遇到未知欄位直接拋出 400 錯誤
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
     }),
   );
 
+  // 🚀 3. 監聽 3000 Port
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();

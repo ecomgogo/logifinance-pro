@@ -2,10 +2,10 @@
 import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
 import { ShipmentService } from './shipment.service';
 import { CreateShipmentDto } from './shipment.dto';
-import { AuthGuard } from '../auth/auth.guard'; // ✅ 現在這個檔案存在了！
+import { AuthGuard } from '../auth'; // 🌟 關鍵修改：直接從 ../auth 引入，乾淨又不會錯！
 
 @Controller('shipments') 
-@UseGuards(AuthGuard) // 🛡️ 啟動守衛防護
+@UseGuards(AuthGuard) 
 export class ShipmentController {
   constructor(private readonly shipmentService: ShipmentService) {}
 
