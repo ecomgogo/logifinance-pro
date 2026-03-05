@@ -1,6 +1,20 @@
-import { Controller, Get, Post, Body, UseGuards, Param, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  UseGuards,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Delete,
+} from '@nestjs/common';
 import { ShipmentService } from './shipment.service';
-import { CreateShipmentDto } from './shipment.dto';
+import {
+  CreateShipmentDto,
+  UpdateShipmentDto,
+  UpdateShipmentFinanceDto,
+} from './shipment.dto';
 import { AuthGuard } from '../auth';
 
 @Controller('shipments') 
@@ -22,5 +36,26 @@ export class ShipmentController {
   @Get(':id')
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.shipmentService.findOne(id);
+  }
+
+  @Patch(':id/finance-fields')
+  async updateFinanceFields(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateShipmentFinanceDto,
+  ) {
+    return this.shipmentService.updateFinanceFields(id, dto);
+  }
+
+  @Patch(':id')
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateShipmentDto,
+  ) {
+    return this.shipmentService.update(id, dto);
+  }
+
+  @Delete(':id')
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.shipmentService.remove(id);
   }
 }

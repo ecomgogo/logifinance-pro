@@ -1,5 +1,10 @@
-import { IsString, IsEnum, IsNumber, IsUUID, IsOptional } from 'class-validator';
-import { Type } from 'class-transformer';
+import {
+  IsString,
+  IsEnum,
+  IsUUID,
+  IsOptional,
+  IsDecimal,
+} from 'class-validator';
 
 export class CreateChargeDto {
   @IsUUID()
@@ -18,12 +23,10 @@ export class CreateChargeDto {
   @IsString()
   currency: string;
 
-  @IsNumber()
-  @Type(() => Number)
-  amount: number;
+  @IsDecimal({ decimal_digits: '1,4' })
+  amount: string;
 
-  @IsNumber()
-  @Type(() => Number)
   @IsOptional()
-  exchangeRate?: number = 1;
+  @IsDecimal({ decimal_digits: '1,6' })
+  exchangeRate?: string;
 }

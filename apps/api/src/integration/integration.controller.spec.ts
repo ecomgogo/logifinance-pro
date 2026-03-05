@@ -6,7 +6,6 @@ import { ClsService } from 'nestjs-cls';
 import { AuthGuard } from '../auth';
 import { IntegrationController } from './integration.controller';
 import { IntegrationService } from './integration.service';
-import { RedisService } from '../redis/redis.service';
 
 describe('IntegrationController', () => {
   let app: INestApplication;
@@ -16,10 +15,8 @@ describe('IntegrationController', () => {
     parseDocument: jest.fn(),
     getTrackingInfo: jest.fn(),
     getExchangeRate: jest.fn(),
-  };
-
-  const mockRedisService = {
-    checkRateLimit: jest.fn(),
+    upsertLogttCredential: jest.fn(),
+    handleLogisticsWebhook: jest.fn(),
   };
 
   const mockClsService = {
@@ -39,7 +36,6 @@ describe('IntegrationController', () => {
       providers: [
         AuthGuard,
         { provide: IntegrationService, useValue: mockIntegrationService },
-        { provide: RedisService, useValue: mockRedisService },
         { provide: ClsService, useValue: mockClsService },
       ],
     }).compile();
@@ -60,7 +56,7 @@ describe('IntegrationController', () => {
   it('POST /integration/parse-doc 未帶 token 應回 401', async () => {
     await request(app.getHttpServer())
       .post('/integration/parse-doc')
-      .attach('file', Buffer.from('hello'), 'demo.txt')
+      .attach('file', Buffer.from('customer_order_no,tracking_no\nA001,DHL0001'), 'demo.csv')
       .expect(401);
   });
 
@@ -80,7 +76,7 @@ describe('IntegrationController', () => {
     const response = await request(app.getHttpServer())
       .post('/integration/parse-doc')
       .set('Authorization', `Bearer ${token}`)
-      .attach('file', Buffer.from('hello'), 'demo.txt')
+      .attach('file', Buffer.from('customer_order_no,tracking_no\nA001,DHL0001'), 'demo.csv')
       .expect(201);
 
     expect(response.body).toEqual({

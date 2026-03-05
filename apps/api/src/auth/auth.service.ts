@@ -58,7 +58,7 @@ export class AuthService {
           tenantId: tenant.id,
           email: dto.email,
           passwordHash,
-          role: UserRole.BOSS,
+          role: dto.role === 'SALES' ? UserRole.SALES : UserRole.BOSS,
           commissionRate: 0,
         },
       });

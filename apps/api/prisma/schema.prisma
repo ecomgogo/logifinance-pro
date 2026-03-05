@@ -29,6 +29,9 @@ model Tenant {
   shipments        Shipment[]
   charges          Charge[]
   settlements      Settlement[]
+  apiCredentials   TenantApiCredential[]
+  logisticsProviders LogisticsProvider[]
+  logisticsFeeCodeMappings LogisticsFeeCodeMapping[]
 
   @@map("tenants")
 }
@@ -89,8 +92,17 @@ model Shipment {
   id          String   @id @default(uuid()) @db.Uuid
   tenantId    String   @map("tenant_id") @db.Uuid
   internalNo  String   @map("internal_no") // [新增] 系統內部唯一業務單號
+  referenceNo String?  @map("reference_no")
   mblNumber   String?  @map("mbl_number")
   hblNumber   String?  @map("hbl_number")
+  shippingMethodCode String? @map("shipping_method_code")
+  currency    String?  @map("currency")
+  receivableAmount Decimal? @map("receivable_amount") @db.Decimal(15, 4)
+  payableAmount Decimal? @map("payable_amount") @db.Decimal(15, 4)
+  remark      String?  @map("remark")
+  grossWeight Decimal? @map("gross_weight") @db.Decimal(15, 3)
+  volumeWeight Decimal? @map("volume_weight") @db.Decimal(15, 3)
+  chargeWeight Decimal? @map("charge_weight") @db.Decimal(15, 3)
   type        String   @map("type")
   salesId     String   @map("sales_id") @db.Uuid
   createdAt   DateTime @default(now()) @map("created_at")
@@ -101,7 +113,9 @@ model Shipment {
   charges Charge[]
 
   @@unique([tenantId, internalNo]) // [新增] 確保同一家公司的內部單號不重複
+  @@unique([tenantId, referenceNo])
   @@index([tenantId, salesId])     // [新增] 銷售人員查詢自己業績時的複合索引
+  @@index([tenantId, mblNumber])
   @@map("shipments")
 }
 
@@ -162,4 +176,76 @@ enum UserRole {
   BOSS
   SALES
   @@map("user_role")
+}
+
+/// 租戶外部 API 憑證：不同租戶可對接不同物流平台帳密（如速遞管家）。
+model TenantApiCredential {
+  id         String           @id @default(uuid()) @db.Uuid
+  tenantId   String           @map("tenant_id") @db.Uuid
+  provider   ExternalProvider
+  appToken   String           @map("app_token")
+  appKey     String           @map("app_key")
+  isActive   Boolean          @default(true) @map("is_active")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider])
+  @@index([tenantId, provider, isActive])
+  @@map("tenant_api_credentials")
+}
+
+enum ExternalProvider {
+  LOGTT
+}
+
+/// 物流供應商：固定供應商 + 客戶自建供應商，供回調與費用入帳使用。
+model LogisticsProvider {
+  id            String       @id @default(uuid()) @db.Uuid
+  tenantId      String       @map("tenant_id") @db.Uuid
+  code          String       @map("code")
+  name          String       @map("name")
+  type          ProviderType @map("type")
+  isBuiltin     Boolean      @default(false) @map("is_builtin")
+  appToken      String?      @map("app_token")
+  appKey        String?      @map("app_key")
+  webhookSecret String?      @map("webhook_secret")
+  isActive      Boolean      @default(true) @map("is_active")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  feeCodeMappings LogisticsFeeCodeMapping[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, type, isActive])
+  @@map("logistics_providers")
+}
+
+enum ProviderType {
+  LOGTT
+  DHL
+  FEDEX
+  UPS
+  CUSTOM
+}
+
+/// 供應商費目映射：將外部費用代碼轉為內部 feeCode，供回調費用自動入帳。
+model LogisticsFeeCodeMapping {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  providerId      String   @map("provider_id") @db.Uuid
+  externalFeeCode String   @map("external_fee_code")
+  internalFeeCode String   @map("internal_fee_code")
+  defaultArApType ArApType @default(AP) @map("default_ar_ap_type")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider LogisticsProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, providerId, externalFeeCode])
+  @@index([tenantId, providerId])
+  @@map("logistics_fee_code_mappings")
 }

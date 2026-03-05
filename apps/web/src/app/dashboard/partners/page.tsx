@@ -25,15 +25,24 @@ interface Partner {
   charges: Charge[];
 }
 
+interface UserSettings {
+  baseCurrency: string;
+}
+
 export default function PartnersPage() {
   const router = useRouter();
   const [partners, setPartners] = useState<Partner[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [baseCurrency, setBaseCurrency] = useState('HKD');
 
   const fetchPartners = useCallback(async () => {
     try {
-      const { data } = await api.get('/partners');
-      setPartners(data);
+      const [partnersRes, settingsRes] = await Promise.all([
+        api.get('/partners'),
+        api.get<UserSettings>('/users/settings'),
+      ]);
+      setPartners(partnersRes.data);
+      setBaseCurrency(settingsRes.data?.baseCurrency || 'HKD');
     } catch (error) {
       console.error(error);
       alert('無法載入對帳資料');
@@ -148,18 +157,24 @@ export default function PartnersPage() {
                           <Building2 size={18} className="text-zinc-400" />
                           <span className="text-base">{partner.name}</span>
                         </td>
-                        <td className="px-6 py-5 text-right font-mono text-zinc-600 dark:text-zinc-400">{totalAR.toLocaleString()}</td>
+                        <td className="px-6 py-5 text-right font-mono text-zinc-600 dark:text-zinc-400">
+                          {totalAR.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <span className="ml-1 text-xs text-zinc-400">{baseCurrency}</span>
+                        </td>
                         <td className="px-6 py-5 text-right font-mono font-bold">
                           {unpaidAR > 0 ? (
-                            <span className="text-rose-600 dark:text-rose-400 flex items-center justify-end gap-1"><AlertCircle size={14}/> {unpaidAR.toLocaleString()}</span>
+                            <span className="text-rose-600 dark:text-rose-400 flex items-center justify-end gap-1"><AlertCircle size={14}/> {unpaidAR.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<span className="text-xs text-zinc-400">{baseCurrency}</span></span>
                           ) : (
                             <span className="text-emerald-600 dark:text-emerald-400 flex items-center justify-end gap-1"><CheckCircle2 size={14}/> 0</span>
                           )}
                         </td>
-                        <td className="px-6 py-5 text-right font-mono text-zinc-600 dark:text-zinc-400">{totalAP.toLocaleString()}</td>
+                        <td className="px-6 py-5 text-right font-mono text-zinc-600 dark:text-zinc-400">
+                          {totalAP.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <span className="ml-1 text-xs text-zinc-400">{baseCurrency}</span>
+                        </td>
                         <td className="px-6 py-5 text-right font-mono font-bold">
                           {unpaidAP > 0 ? (
-                            <span className="text-amber-600 dark:text-amber-500 flex items-center justify-end gap-1"><AlertCircle size={14}/> {unpaidAP.toLocaleString()}</span>
+                            <span className="text-amber-600 dark:text-amber-500 flex items-center justify-end gap-1"><AlertCircle size={14}/> {unpaidAP.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<span className="text-xs text-zinc-400">{baseCurrency}</span></span>
                           ) : (
                             <span className="text-emerald-600 dark:text-emerald-400 flex items-center justify-end gap-1"><CheckCircle2 size={14}/> 0</span>
                           )}

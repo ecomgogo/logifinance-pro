@@ -5,6 +5,7 @@ import {
   IsNotEmpty,
   Length,
   MaxLength,
+  IsIn,
 } from 'class-validator';
 
 /**
@@ -31,6 +32,11 @@ export class RegisterTenantDto {
   @IsString()
   @MinLength(6, { message: '密碼至少 6 碼' })
   password!: string;
+
+  /** 首位使用者角色 */
+  @IsString()
+  @IsIn(['BOSS', 'SALES'], { message: '角色僅支援 BOSS 或 SALES' })
+  role!: 'BOSS' | 'SALES';
 }
 
 /**

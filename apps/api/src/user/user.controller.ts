@@ -1,6 +1,19 @@
-import { Controller, Get, Post, Body, UseGuards, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  UseGuards,
+  Query,
+  Patch,
+} from '@nestjs/common';
 import { UserService } from './user.service';
-import { CreateUserDto } from './user.dto';
+import {
+  ChangePasswordDto,
+  CreateUserDto,
+  UpdateExchangeRatesDto,
+  UpdateUserSettingsDto,
+} from './user.dto';
 import { AuthGuard } from '../auth';
 
 @Controller('users')
@@ -22,5 +35,35 @@ export class UserController {
   @Get()
   async findAll() {
     return this.userService.findAll();
+  }
+
+  @Patch('password')
+  async changePassword(@Body() dto: ChangePasswordDto) {
+    return this.userService.changePassword(dto);
+  }
+
+  @Get('settings')
+  async getMySettings() {
+    return this.userService.getMySettings();
+  }
+
+  @Patch('settings')
+  async updateMySettings(@Body() dto: UpdateUserSettingsDto) {
+    return this.userService.updateMySettings(dto);
+  }
+
+  @Get('settings/exchange-rates')
+  async getExchangeRates() {
+    return this.userService.getExchangeRates();
+  }
+
+  @Patch('settings/exchange-rates')
+  async updateExchangeRates(@Body() dto: UpdateExchangeRatesDto) {
+    return this.userService.updateExchangeRates(dto);
+  }
+
+  @Post('settings/exchange-rates/refresh-api')
+  async refreshApiExchangeRates() {
+    return this.userService.refreshApiExchangeRates();
   }
 }

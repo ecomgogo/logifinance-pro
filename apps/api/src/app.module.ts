@@ -12,6 +12,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { UserModule } from './user/user.module'; // 🌟 引入新模組
 import { IntegrationModule } from './integration/integration.module';
 import { RedisModule } from './redis/redis.module';
+import { LogisticsProviderModule } from './logistics-provider/logistics-provider.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { RedisModule } from './redis/redis.module';
     UserModule, 
     IntegrationModule,
     RedisModule, 
+    LogisticsProviderModule,
   ],
   controllers: [AppController],
   providers: [AppService],

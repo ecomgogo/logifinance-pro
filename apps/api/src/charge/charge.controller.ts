@@ -18,6 +18,11 @@ export class ChargeController {
     return this.chargeService.findByShipment(shipmentId);
   }
 
+  @Post('recalculate-base-amounts')
+  async recalculateBaseAmounts() {
+    return this.chargeService.recalculateBaseAmounts();
+  }
+
   // 🌟 新增：刪除單筆費用的 API 端點
   @Delete(':id')
   async remove(@Param('id', ParseUUIDPipe) id: string) {

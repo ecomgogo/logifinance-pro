@@ -2,11 +2,27 @@ import { InternalServerErrorException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { RedisService } from '../redis/redis.service';
 import { IntegrationService } from './integration.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { ChargeService } from '../charge/charge.service';
+import { LogisticsProviderService } from '../logistics-provider/logistics-provider.service';
+import { DhlClient } from './providers/dhl.client';
+import { FedexClient } from './providers/fedex.client';
+import { UpsClient } from './providers/ups.client';
 
 describe('IntegrationService', () => {
   let service: IntegrationService;
   let redisService: jest.Mocked<Pick<RedisService, 'get' | 'set'>>;
   let clsService: jest.Mocked<Pick<ClsService, 'get'>>;
+  let prismaService: jest.Mocked<Pick<PrismaService, 'client'>>;
+  let chargeService: jest.Mocked<Pick<ChargeService, 'createFromLogttFee'>>;
+  let logisticsProviderService: jest.Mocked<
+    Pick<LogisticsProviderService, 'resolveInternalFeeCode'>
+  >;
+  let dhlClient: jest.Mocked<Pick<DhlClient, 'providerCode' | 'getTracking'>>;
+  let fedexClient: jest.Mocked<
+    Pick<FedexClient, 'providerCode' | 'getTracking'>
+  >;
+  let upsClient: jest.Mocked<Pick<UpsClient, 'providerCode' | 'getTracking'>>;
 
   beforeEach(() => {
     redisService = {
@@ -18,9 +34,54 @@ describe('IntegrationService', () => {
       get: jest.fn(),
     };
 
+    prismaService = {
+      client: {
+        tenantApiCredential: {
+          upsert: jest.fn(),
+          findUnique: jest.fn(),
+        },
+        shipment: {
+          findFirst: jest.fn(),
+        },
+      },
+    } as unknown as jest.Mocked<Pick<PrismaService, 'client'>>;
+
+    chargeService = {
+      createFromLogttFee: jest.fn(),
+    };
+    logisticsProviderService = {
+      resolveInternalFeeCode: jest.fn(),
+    };
+    dhlClient = {
+      providerCode: 'DHL',
+      getTracking: jest.fn(),
+    };
+    fedexClient = {
+      providerCode: 'FEDEX',
+      getTracking: jest.fn(),
+    };
+    upsClient = {
+      providerCode: 'UPS',
+      getTracking: jest.fn(),
+    };
+
+    (
+      prismaService.client.tenantApiCredential.findUnique as jest.Mock
+    ).mockResolvedValue({
+      appToken: 'token',
+      appKey: 'key',
+      isActive: true,
+    });
+
     service = new IntegrationService(
       redisService as unknown as RedisService,
       clsService as unknown as ClsService,
+      prismaService as unknown as PrismaService,
+      chargeService as unknown as ChargeService,
+      logisticsProviderService as unknown as LogisticsProviderService,
+      dhlClient as unknown as DhlClient,
+      fedexClient as unknown as FedexClient,
+      upsClient as unknown as UpsClient,
     );
   });
 
@@ -36,9 +97,9 @@ describe('IntegrationService', () => {
       } as Response);
 
     const result = await service.parseDocument({
-      buffer: Buffer.from('hello'),
-      mimetype: 'text/plain',
-      originalname: 'test.txt',
+      buffer: Buffer.from('customer_order_no,tracking_no\nA001,DHL0001'),
+      mimetype: 'text/csv',
+      originalname: 'test.csv',
     });
 
     expect(result).toEqual({ status: 'success' });
@@ -96,8 +157,8 @@ describe('IntegrationService', () => {
     await expect(
       service.parseDocument({
         buffer: Buffer.from('error'),
-        mimetype: 'text/plain',
-        originalname: 'bad.txt',
+        mimetype: 'text/csv',
+        originalname: 'bad.csv',
       }),
     ).rejects.toBeInstanceOf(InternalServerErrorException);
 

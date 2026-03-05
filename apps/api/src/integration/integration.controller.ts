@@ -4,9 +4,10 @@ import {
   Get,
   Headers,
   HttpException,
-  HttpStatus,
   Param,
   Post,
+  Query,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -14,7 +15,12 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '../auth';
 import { IntegrationService } from './integration.service';
-import { RedisService } from '../redis/redis.service';
+import { ClsService } from 'nestjs-cls';
+import { Request } from 'express';
+import {
+  LogisticsWebhookHeadersDto,
+  UpsertLogttCredentialDto,
+} from './integration.dto';
 
 interface UploadedFilePayload {
   buffer: Buffer;
@@ -26,7 +32,7 @@ interface UploadedFilePayload {
 export class IntegrationController {
   constructor(
     private readonly integrationService: IntegrationService,
-    private readonly redisService: RedisService // 注入 Redis 進行防刷
+    private readonly clsService: ClsService,
   ) {}
   
   // =================================================================
@@ -39,33 +45,149 @@ export class IntegrationController {
     return this.integrationService.parseDocument(file);
   }
 
-  // =================================================================
-  // 🌟 Milestone 6: Webhook 接收與 Rate Limiting 防刷
-  // =================================================================
+  @Post('logtt/credentials')
+  @UseGuards(AuthGuard)
+  async upsertLogttCredentials(@Body() dto: UpsertLogttCredentialDto) {
+    return this.integrationService.upsertLogttCredential(dto);
+  }
+
   @Post('webhook/logistics')
   async receiveLogisticsWebhook(
-    @Body() payload: any, 
-    @Headers('x-api-key') apiKey: string,
-    @Headers('x-forwarded-for') ip: string = 'unknown_ip'
+    @Req() req: Request & { rawBody?: Buffer; user?: { tenantId?: string; sub?: string } },
+    @Body() payload: Record<string, unknown>,
+    @Headers('datatype') datatype: LogisticsWebhookHeadersDto['datatype'],
+    @Headers('sign') sign: string,
+    @Headers('timestamp') timestamp: string,
+    @Headers('x-tenant-id') tenantId: string,
   ) {
-    // 🛡️ 1. 基礎驗證
-    if (apiKey !== 'my-secret-webhook-key') {
-      throw new HttpException('Invalid API Key', HttpStatus.UNAUTHORIZED);
-    }
+    // Webhook 無 JWT，改以租戶 Header + 簽名驗證建立租戶上下文。
+    req.user = { tenantId, sub: 'system-logtt-webhook' };
+    this.clsService.set('tenant_id', tenantId);
+    this.clsService.set('user_id', 'system-logtt-webhook');
 
-    // 🛡️ 2. Redis 限流防護：同一個 IP，1 分鐘內最多只能打 60 次 Webhook
-    const rateLimitKey = `ratelimit:webhook:${ip}`;
-    const isAllowed = await this.redisService.checkRateLimit(rateLimitKey, 60, 60);
-    
-    if (!isAllowed) {
-      console.warn(`🚨 偵測到異常流量！IP: ${ip} 已被限流`);
-      throw new HttpException('Too Many Requests', HttpStatus.TOO_MANY_REQUESTS);
-    }
+    const rawBody =
+      req.rawBody instanceof Buffer
+        ? req.rawBody.toString('utf8')
+        : JSON.stringify(payload);
 
-    // 3. 處理業務邏輯 (寫入資料庫)
-    console.log('📦 成功接收物流狀態更新 Webhook:', payload);
-    
-    return { status: 'success', message: 'Webhook received successfully' };
+    try {
+      return this.integrationService.handleLogisticsWebhook({
+        headers: { datatype, sign, timestamp },
+        payload,
+        rawBody,
+      });
+    } catch (error) {
+      if (
+        error instanceof HttpException &&
+        error.getStatus() >= 400 &&
+        error.getStatus() < 500
+      ) {
+        throw error;
+      }
+
+      await this.integrationService.enqueueWebhookRetry({
+        source: 'LOGTT',
+        tenantId,
+        providerCode: 'LOGTT',
+        payload,
+        rawBody,
+        headers: { datatype, sign, timestamp },
+      });
+      return { status: 'queued', message: 'Webhook 已排入重試佇列' };
+    }
+  }
+
+  @Post('webhook/providers/:providerCode/fee')
+  async receiveProviderFeeWebhook(
+    @Req() req: Request & { rawBody?: Buffer; user?: { tenantId?: string; sub?: string } },
+    @Param('providerCode') providerCode: string,
+    @Body() payload: Record<string, unknown>,
+    @Headers('x-tenant-id') tenantId: string,
+    @Headers('x-signature') signature?: string,
+    @Headers('x-timestamp') timestamp?: string,
+  ) {
+    req.user = { tenantId, sub: 'system-provider-webhook' };
+    this.clsService.set('tenant_id', tenantId);
+    this.clsService.set('user_id', 'system-provider-webhook');
+
+    const rawBody =
+      req.rawBody instanceof Buffer
+        ? req.rawBody.toString('utf8')
+        : JSON.stringify(payload);
+
+    try {
+      return this.integrationService.handleProviderFeeWebhook({
+        providerCode,
+        payload,
+        rawBody,
+        signature,
+        timestamp,
+      });
+    } catch (error) {
+      if (
+        error instanceof HttpException &&
+        error.getStatus() >= 400 &&
+        error.getStatus() < 500
+      ) {
+        throw error;
+      }
+
+      await this.integrationService.enqueueWebhookRetry({
+        source: 'PROVIDER',
+        tenantId,
+        providerCode,
+        payload,
+        rawBody,
+        signature,
+        timestamp,
+      });
+      return { status: 'queued', message: 'Webhook 已排入重試佇列' };
+    }
+  }
+
+  @Post('webhook/retry/process')
+  @UseGuards(AuthGuard)
+  async processRetryQueue() {
+    return this.integrationService.processRetryQueue(10);
+  }
+
+  @Get('webhook/retry/dead-letter')
+  @UseGuards(AuthGuard)
+  async getDeadLetterQueue(
+    @Query('providerCode') providerCode?: string,
+    @Query('source') source?: 'LOGTT' | 'PROVIDER',
+    @Query('limit') limitRaw?: string,
+  ) {
+    const limit = limitRaw ? Number(limitRaw) : 100;
+    return this.integrationService.getDeadLetterItems(limit, {
+      providerCode,
+      source,
+    });
+  }
+
+  @Get('webhook/retry/stats')
+  @UseGuards(AuthGuard)
+  async getRetryStats() {
+    return this.integrationService.getRetryQueueStats();
+  }
+
+  @Post('webhook/retry/dead-letter/:jobId/requeue')
+  @UseGuards(AuthGuard)
+  async requeueDeadLetterJob(@Param('jobId') jobId: string) {
+    return this.integrationService.requeueDeadLetterJob(jobId);
+  }
+
+  @Post('webhook/retry/dead-letter/requeue-batch')
+  @UseGuards(AuthGuard)
+  async requeueDeadLetterBatch(
+    @Body()
+    body: {
+      providerCode?: string;
+      source?: 'LOGTT' | 'PROVIDER';
+      limit?: number;
+    },
+  ) {
+    return this.integrationService.requeueDeadLetterBatch(body);
   }
 
   // =================================================================
@@ -73,11 +195,25 @@ export class IntegrationController {
   // =================================================================
   
   @Get('tracking/:mblNumber')
+  @UseGuards(AuthGuard)
   async getTracking(@Param('mblNumber') mblNumber: string) {
     return this.integrationService.getTrackingInfo(mblNumber);
   }
 
+  @Get('providers/:providerCode/tracking/:trackingNumber')
+  @UseGuards(AuthGuard)
+  async getProviderTracking(
+    @Param('providerCode') providerCode: string,
+    @Param('trackingNumber') trackingNumber: string,
+  ) {
+    return this.integrationService.getProviderTrackingInfo(
+      providerCode,
+      trackingNumber,
+    );
+  }
+
   @Get('exchange-rate/:currency')
+  @UseGuards(AuthGuard)
   async getExchangeRate(@Param('currency') currency: string) {
     const rate = await this.integrationService.getExchangeRate(currency);
     return { currency, rate };

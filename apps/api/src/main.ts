@@ -4,7 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { DecimalInterceptor } from './common/interceptors/decimal.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   // 🌟 1. 啟動 CORS，允許前端 3001 Port 自由進出 API
   app.enableCors({

@@ -11,6 +11,13 @@ interface Shipment {
   internalNo: string;
   mblNumber: string | null;
   type: string;
+  currency?: string | null;
+  receivableAmount?: string | null;
+  payableAmount?: string | null;
+}
+
+interface UserSettings {
+  baseCurrency: string;
 }
 
 interface Settlement {
@@ -39,6 +46,7 @@ export default function ShipmentDetailsPage() {
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [charges, setCharges] = useState<Charge[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [baseCurrency, setBaseCurrency] = useState('HKD');
 
   // 記帳 Modal 狀態
   const [isChargeModalOpen, setIsChargeModalOpen] = useState(false);
@@ -61,12 +69,14 @@ export default function ShipmentDetailsPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [shipmentRes, chargesRes] = await Promise.all([
+      const [shipmentRes, chargesRes, settingsRes] = await Promise.all([
         api.get(`/shipments/${shipmentId}`),
-        api.get(`/charges/shipment/${shipmentId}`)
+        api.get(`/charges/shipment/${shipmentId}`),
+        api.get<UserSettings>('/users/settings'),
       ]);
       setShipment(shipmentRes.data);
       setCharges(chargesRes.data);
+      setBaseCurrency(settingsRes.data?.baseCurrency || 'HKD');
     } catch (error) {
       console.error(error);
       alert('載入資料失敗，請確認運單是否存在');
@@ -90,9 +100,38 @@ export default function ShipmentDetailsPage() {
         arApType: chargeFormData.arApType,
         feeCode: chargeFormData.feeCode,
         currency: chargeFormData.currency,
-        amount: Number(chargeFormData.amount),
+        amount: chargeFormData.amount,
         partnerName: chargeFormData.partnerName,
       });
+
+      if (shipment) {
+        const targetAmountKey =
+          chargeFormData.arApType === 'AR' ? 'receivableAmount' : 'payableAmount';
+        const existingAmountRaw = shipment[targetAmountKey];
+        const existingAmount = existingAmountRaw ? Number(existingAmountRaw) : null;
+        const newAmount = Number(chargeFormData.amount);
+        const willOverwriteAmount =
+          existingAmount !== null &&
+          Number.isFinite(existingAmount) &&
+          existingAmount !== newAmount;
+        const willOverwriteCurrency =
+          !!shipment.currency && shipment.currency !== chargeFormData.currency;
+
+        if (willOverwriteAmount || willOverwriteCurrency) {
+          const confirmed = window.confirm(
+            '偵測到本單已存在新增業務單資料。是否覆蓋原有數據？',
+          );
+          if (confirmed) {
+            await api.patch(`/shipments/${shipmentId}/finance-fields`, {
+              currency: chargeFormData.currency,
+              ...(chargeFormData.arApType === 'AR'
+                ? { receivableAmount: chargeFormData.amount }
+                : { payableAmount: chargeFormData.amount }),
+            });
+          }
+        }
+      }
+
       setIsChargeModalOpen(false);
       setChargeFormData({ arApType: 'AR', feeCode: 'O/F', currency: 'HKD', amount: '', partnerName: '' });
       await fetchData(); 
@@ -149,8 +188,12 @@ export default function ShipmentDetailsPage() {
   if (isLoading) return <div className="flex h-screen items-center justify-center bg-zinc-50 dark:bg-black"><Loader2 className="animate-spin text-zinc-500" /></div>;
   if (!shipment) return null;
 
-  const totalAR = charges.filter(c => c.arApType === 'AR').reduce((sum, c) => sum + Number(c.baseAmount), 0);
-  const totalAP = charges.filter(c => c.arApType === 'AP').reduce((sum, c) => sum + Number(c.baseAmount), 0);
+  const totalAR = charges
+    .filter(c => c.arApType === 'AR')
+    .reduce((sum, c) => sum + Number(c.baseAmount), 0);
+  const totalAP = charges
+    .filter(c => c.arApType === 'AP')
+    .reduce((sum, c) => sum + Number(c.baseAmount), 0);
   const grossProfit = totalAR - totalAP;
 
   return (
@@ -188,6 +231,7 @@ export default function ShipmentDetailsPage() {
                   <select className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white" value={chargeFormData.currency} onChange={(e) => setChargeFormData({...chargeFormData, currency: e.target.value})}>
                     <option value="HKD">HKD</option>
                     <option value="USD">USD</option>
+                    <option value="CNY">CNY</option>
                     <option value="TWD">TWD</option>
                   </select>
                 </div>
@@ -277,7 +321,13 @@ export default function ShipmentDetailsPage() {
               <Printer size={16} /> 列印請款單
             </button>
             <button 
-              onClick={() => setIsChargeModalOpen(true)} 
+              onClick={() => {
+                setChargeFormData((prev) => ({
+                  ...prev,
+                  currency: shipment.currency === 'RMB' ? 'CNY' : shipment.currency || 'HKD',
+                }));
+                setIsChargeModalOpen(true);
+              }} 
               className="flex-1 sm:flex-none bg-black dark:bg-white text-white dark:text-black px-4 py-2.5 rounded-lg font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 text-sm"
             >
               <Plus size={16} /> 記一筆帳
@@ -291,19 +341,28 @@ export default function ShipmentDetailsPage() {
             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 mb-2">
               <TrendingUp size={18} /> <span className="text-sm font-medium">總應收 (AR)</span>
             </div>
-            <h3 className="text-3xl font-bold text-zinc-900 dark:text-white font-mono">{totalAR.toLocaleString()}</h3>
+            <h3 className="text-3xl font-bold text-zinc-900 dark:text-white font-mono">
+              {totalAR.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <span className="ml-2 text-sm text-zinc-500">{baseCurrency}</span>
+            </h3>
           </div>
           <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
             <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 mb-2">
               <TrendingDown size={18} /> <span className="text-sm font-medium">總應付 (AP)</span>
             </div>
-            <h3 className="text-3xl font-bold text-zinc-900 dark:text-white font-mono">{totalAP.toLocaleString()}</h3>
+            <h3 className="text-3xl font-bold text-zinc-900 dark:text-white font-mono">
+              {totalAP.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <span className="ml-2 text-sm text-zinc-500">{baseCurrency}</span>
+            </h3>
           </div>
           <div className="bg-zinc-900 dark:bg-white p-6 rounded-2xl border border-zinc-800 dark:border-zinc-200 shadow-lg text-white dark:text-black">
             <div className="flex items-center gap-2 text-zinc-400 dark:text-zinc-500 mb-2">
               <DollarSign size={18} /> <span className="text-sm font-medium">預估毛利 (Profit)</span>
             </div>
-            <h3 className="text-3xl font-bold font-mono">{grossProfit.toLocaleString()}</h3>
+            <h3 className="text-3xl font-bold font-mono">
+              {grossProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <span className="ml-2 text-sm text-zinc-400 dark:text-zinc-600">{baseCurrency}</span>
+            </h3>
           </div>
         </div>
 
