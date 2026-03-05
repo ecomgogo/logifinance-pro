@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, TrendingUp, TrendingDown, DollarSign, Loader2, Building2, Receipt } from 'lucide-react';
+// 🌟 確保在這裡引入了 Printer 圖示
+import { ArrowLeft, Plus, TrendingUp, TrendingDown, DollarSign, Loader2, Building2, Receipt, CheckCircle2, CircleDashed, Banknote, Printer } from 'lucide-react';
 import api from '@/lib/api';
 
 interface Shipment {
@@ -10,6 +11,12 @@ interface Shipment {
   internalNo: string;
   mblNumber: string | null;
   type: string;
+}
+
+interface Settlement {
+  id: string;
+  paidAmount: number;
+  paymentDate: string;
 }
 
 interface Charge {
@@ -21,6 +28,7 @@ interface Charge {
   baseAmount: number;
   partner: { name: string };
   createdAt: string;
+  settlements: Settlement[];
 }
 
 export default function ShipmentDetailsPage() {
@@ -32,15 +40,23 @@ export default function ShipmentDetailsPage() {
   const [charges, setCharges] = useState<Charge[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Modal 狀態
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // 記帳 Modal 狀態
+  const [isChargeModalOpen, setIsChargeModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
+  const [chargeFormData, setChargeFormData] = useState({
     arApType: 'AR',
     feeCode: 'O/F',
     currency: 'HKD',
     amount: '',
     partnerName: ''
+  });
+
+  // 核銷 Modal 狀態
+  const [isSettlementModalOpen, setIsSettlementModalOpen] = useState(false);
+  const [settlingCharge, setSettlingCharge] = useState<Charge | null>(null);
+  const [settlementFormData, setSettlementFormData] = useState({
+    paidAmount: '',
+    paymentDate: new Date().toISOString().split('T')[0]
   });
 
   const fetchData = useCallback(async () => {
@@ -64,21 +80,22 @@ export default function ShipmentDetailsPage() {
     fetchData();
   }, [fetchData]);
 
+  // 處理新增費用 (記帳)
   const handleAddCharge = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
       await api.post('/charges', {
         shipmentId,
-        arApType: formData.arApType,
-        feeCode: formData.feeCode,
-        currency: formData.currency,
-        amount: Number(formData.amount),
-        partnerName: formData.partnerName,
+        arApType: chargeFormData.arApType,
+        feeCode: chargeFormData.feeCode,
+        currency: chargeFormData.currency,
+        amount: Number(chargeFormData.amount),
+        partnerName: chargeFormData.partnerName,
       });
-      setIsModalOpen(false);
-      setFormData({ arApType: 'AR', feeCode: 'O/F', currency: 'HKD', amount: '', partnerName: '' });
-      await fetchData(); // 重新拉取計算最新毛利
+      setIsChargeModalOpen(false);
+      setChargeFormData({ arApType: 'AR', feeCode: 'O/F', currency: 'HKD', amount: '', partnerName: '' });
+      await fetchData(); 
     } catch (error: any) {
       alert(error.response?.data?.message || '新增費用失敗');
     } finally {
@@ -86,10 +103,38 @@ export default function ShipmentDetailsPage() {
     }
   };
 
+  // 處理核銷 (收付款)
+  const handleSettle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!settlingCharge) return;
+    setIsSubmitting(true);
+    try {
+      await api.post('/settlements', {
+        chargeId: settlingCharge.id,
+        paidAmount: Number(settlementFormData.paidAmount),
+        paymentDate: settlementFormData.paymentDate,
+      });
+      setIsSettlementModalOpen(false);
+      await fetchData();
+    } catch (error: any) {
+      alert(error.response?.data?.message || '核銷失敗');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openSettlementModal = (charge: Charge, unpaidAmount: number) => {
+    setSettlingCharge(charge);
+    setSettlementFormData({
+      paidAmount: unpaidAmount.toString(),
+      paymentDate: new Date().toISOString().split('T')[0]
+    });
+    setIsSettlementModalOpen(true);
+  };
+
   if (isLoading) return <div className="flex h-screen items-center justify-center bg-zinc-50 dark:bg-black"><Loader2 className="animate-spin text-zinc-500" /></div>;
   if (!shipment) return null;
 
-  // 動態計算財務數據
   const totalAR = charges.filter(c => c.arApType === 'AR').reduce((sum, c) => sum + Number(c.baseAmount), 0);
   const totalAP = charges.filter(c => c.arApType === 'AP').reduce((sum, c) => sum + Number(c.baseAmount), 0);
   const grossProfit = totalAR - totalAP;
@@ -97,8 +142,8 @@ export default function ShipmentDetailsPage() {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black font-sans pb-12 relative">
       
-      {/* --- 新增費用 Modal --- */}
-      {isModalOpen && (
+      {/* 新增費用 Modal */}
+      {isChargeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity">
           <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-2xl shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b border-zinc-100 dark:border-zinc-800">
@@ -106,27 +151,27 @@ export default function ShipmentDetailsPage() {
             </div>
             <form onSubmit={handleAddCharge} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-3 mb-2">
-                <button type="button" onClick={() => setFormData({...formData, arApType: 'AR'})} className={`py-2 rounded-lg border font-medium transition-all ${formData.arApType === 'AR' ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/30 dark:text-emerald-400' : 'bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400'}`}>
+                <button type="button" onClick={() => setChargeFormData({...chargeFormData, arApType: 'AR'})} className={`py-2 rounded-lg border font-medium transition-all ${chargeFormData.arApType === 'AR' ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/30 dark:text-emerald-400' : 'bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400'}`}>
                   應收 (客戶)
                 </button>
-                <button type="button" onClick={() => setFormData({...formData, arApType: 'AP'})} className={`py-2 rounded-lg border font-medium transition-all ${formData.arApType === 'AP' ? 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-500/10 dark:border-rose-500/30 dark:text-rose-400' : 'bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400'}`}>
+                <button type="button" onClick={() => setChargeFormData({...chargeFormData, arApType: 'AP'})} className={`py-2 rounded-lg border font-medium transition-all ${chargeFormData.arApType === 'AP' ? 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-500/10 dark:border-rose-500/30 dark:text-rose-400' : 'bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400'}`}>
                   應付 (成本)
                 </button>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">{formData.arApType === 'AR' ? '客戶名稱' : '供應商名稱'}</label>
-                <input type="text" required placeholder="例如: Apple Inc." className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white" value={formData.partnerName} onChange={(e) => setFormData({...formData, partnerName: e.target.value})} />
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">{chargeFormData.arApType === 'AR' ? '客戶名稱' : '供應商名稱'}</label>
+                <input type="text" required placeholder="例如: Apple Inc." className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white" value={chargeFormData.partnerName} onChange={(e) => setChargeFormData({...chargeFormData, partnerName: e.target.value})} />
               </div>
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">費用代碼</label>
-                  <input type="text" required placeholder="例如: O/F" className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white" value={formData.feeCode} onChange={(e) => setFormData({...formData, feeCode: e.target.value})} />
+                  <input type="text" required placeholder="例如: O/F" className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white" value={chargeFormData.feeCode} onChange={(e) => setChargeFormData({...chargeFormData, feeCode: e.target.value})} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">幣別</label>
-                  <select className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white" value={formData.currency} onChange={(e) => setFormData({...formData, currency: e.target.value})}>
+                  <select className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white" value={chargeFormData.currency} onChange={(e) => setChargeFormData({...chargeFormData, currency: e.target.value})}>
                     <option value="HKD">HKD</option>
                     <option value="USD">USD</option>
                     <option value="TWD">TWD</option>
@@ -136,11 +181,11 @@ export default function ShipmentDetailsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">金額</label>
-                <input type="number" step="0.01" required placeholder="0.00" className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white font-mono" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} />
+                <input type="number" step="0.01" required placeholder="0.00" className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white font-mono" value={chargeFormData.amount} onChange={(e) => setChargeFormData({...chargeFormData, amount: e.target.value})} />
               </div>
 
               <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800">取消</button>
+                <button type="button" onClick={() => setIsChargeModalOpen(false)} className="flex-1 px-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800">取消</button>
                 <button type="submit" disabled={isSubmitting} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50">
                   {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : '確認記帳'}
                 </button>
@@ -150,7 +195,50 @@ export default function ShipmentDetailsPage() {
         </div>
       )}
 
-      {/* --- 頁面內容 --- */}
+      {/* 核銷 (收付款) Modal */}
+      {isSettlementModalOpen && settlingCharge && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-sm rounded-2xl shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-zinc-100 dark:border-zinc-800">
+              <h2 className="text-xl font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+                <Banknote size={20} className="text-blue-500" /> 
+                {settlingCharge.arApType === 'AR' ? '確認收款' : '確認付款'}
+              </h2>
+            </div>
+            <form onSubmit={handleSettle} className="p-6 space-y-4">
+              <div className="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-lg border border-zinc-200 dark:border-zinc-800 text-sm">
+                <div className="flex justify-between text-zinc-500 mb-1">
+                  <span>對象:</span>
+                  <span className="font-medium text-zinc-900 dark:text-zinc-100">{settlingCharge.partner.name}</span>
+                </div>
+                <div className="flex justify-between text-zinc-500">
+                  <span>費用項目:</span>
+                  <span className="font-medium text-zinc-900 dark:text-zinc-100">{settlingCharge.feeCode}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">實際收付金額</label>
+                <input type="number" step="0.01" required className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-lg font-bold" value={settlementFormData.paidAmount} onChange={(e) => setSettlementFormData({...settlementFormData, paidAmount: e.target.value})} />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">日期</label>
+                <input type="date" required className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value={settlementFormData.paymentDate} onChange={(e) => setSettlementFormData({...settlementFormData, paymentDate: e.target.value})} />
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button type="button" onClick={() => setIsSettlementModalOpen(false)} className="flex-1 px-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800">取消</button>
+                <button type="submit" disabled={isSubmitting} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50">
+                  {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : '確認核銷'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 頁面標頭 */}
       <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex items-center sticky top-0 z-20 shadow-sm">
         <button onClick={() => router.push('/dashboard')} className="p-2 mr-4 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl transition-colors">
           <ArrowLeft size={18} />
@@ -163,12 +251,25 @@ export default function ShipmentDetailsPage() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto p-6 md:p-8 space-y-8">
-        <div className="flex justify-between items-end">
+      <main className="max-w-6xl mx-auto p-6 md:p-8 space-y-8">
+        
+        {/* 🌟 核心修改區塊：加入「列印請款單」的入口按鈕 */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
           <h2 className="text-xl font-bold text-zinc-900 dark:text-white">本單利潤分析</h2>
-          <button onClick={() => setIsModalOpen(true)} className="bg-black dark:bg-white text-white dark:text-black px-4 py-2.5 rounded-lg font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all shadow-md active:scale-95 flex items-center gap-2 text-sm">
-            <Plus size={16} /> 記一筆帳
-          </button>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <button 
+              onClick={() => window.open(`/dashboard/shipments/${shipmentId}/invoice`, '_blank')}
+              className="flex-1 sm:flex-none bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 px-4 py-2.5 rounded-lg font-medium hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-all flex items-center justify-center gap-2 text-sm"
+            >
+              <Printer size={16} /> 列印請款單
+            </button>
+            <button 
+              onClick={() => setIsChargeModalOpen(true)} 
+              className="flex-1 sm:flex-none bg-black dark:bg-white text-white dark:text-black px-4 py-2.5 rounded-lg font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 text-sm"
+            >
+              <Plus size={16} /> 記一筆帳
+            </button>
+          </div>
         </div>
 
         {/* KPI Cards */}
@@ -193,11 +294,11 @@ export default function ShipmentDetailsPage() {
           </div>
         </div>
 
-        {/* 費用列表 */}
+        {/* 費用列表 (含核銷狀態) */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm overflow-hidden">
           <div className="px-6 py-5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900 flex items-center gap-2">
              <Receipt size={18} className="text-zinc-500" />
-             <h2 className="font-bold text-zinc-900 dark:text-white">費用明細帳</h2>
+             <h2 className="font-bold text-zinc-900 dark:text-white">收付明細與核銷狀態</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -205,32 +306,63 @@ export default function ShipmentDetailsPage() {
                 <tr className="bg-zinc-50 dark:bg-zinc-950/50 border-b border-zinc-200 dark:border-zinc-800 text-xs font-bold text-zinc-500 uppercase tracking-wider">
                   <th className="px-6 py-4">類型</th>
                   <th className="px-6 py-4">對象</th>
-                  <th className="px-6 py-4">費用代碼</th>
-                  <th className="px-6 py-4 text-right">金額 (本位幣)</th>
+                  <th className="px-6 py-4">代碼</th>
+                  <th className="px-6 py-4 text-right">帳面金額</th>
+                  <th className="px-6 py-4 text-right">已結清</th>
+                  <th className="px-6 py-4 text-right">未結餘額</th>
+                  <th className="px-6 py-4 text-center">狀態</th>
+                  <th className="px-6 py-4 text-right">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
                 {charges.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-12 text-center text-zinc-500">目前還沒有任何記帳紀錄</td>
+                    <td colSpan={8} className="px-6 py-12 text-center text-zinc-500">目前還沒有任何記帳紀錄</td>
                   </tr>
                 ) : (
-                  charges.map((charge) => (
-                    <tr key={charge.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
-                      <td className="px-6 py-4">
-                        <span className={`px-2.5 py-1 rounded text-xs font-bold ${charge.arApType === 'AR' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400'}`}>
-                          {charge.arApType === 'AR' ? '應收' : '應付'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 font-medium text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                        <Building2 size={14} className="text-zinc-400" /> {charge.partner.name}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-zinc-600 dark:text-zinc-400">{charge.feeCode}</td>
-                      <td className="px-6 py-4 text-right font-mono font-medium text-zinc-900 dark:text-zinc-100">
-                        {charge.arApType === 'AR' ? '+' : '-'}{Number(charge.baseAmount).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))
+                  charges.map((charge) => {
+                    const paidAmount = charge.settlements.reduce((sum, s) => sum + Number(s.paidAmount), 0);
+                    const unpaidAmount = Number(charge.baseAmount) - paidAmount;
+                    const isFullySettled = unpaidAmount <= 0;
+
+                    return (
+                      <tr key={charge.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                        <td className="px-6 py-4">
+                          <span className={`px-2.5 py-1 rounded text-xs font-bold ${charge.arApType === 'AR' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400'}`}>
+                            {charge.arApType === 'AR' ? '應收' : '應付'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 font-medium text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                          <Building2 size={14} className="text-zinc-400" /> {charge.partner.name}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-zinc-600 dark:text-zinc-400">{charge.feeCode}</td>
+                        <td className="px-6 py-4 text-right font-mono text-zinc-900 dark:text-zinc-100">{Number(charge.baseAmount).toLocaleString()}</td>
+                        <td className="px-6 py-4 text-right font-mono text-zinc-500">{paidAmount.toLocaleString()}</td>
+                        <td className="px-6 py-4 text-right font-mono font-bold text-zinc-900 dark:text-zinc-100">{unpaidAmount.toLocaleString()}</td>
+                        <td className="px-6 py-4 text-center">
+                          {isFullySettled ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-sm font-medium">
+                              <CheckCircle2 size={16} /> 已結清
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-500 text-sm font-medium">
+                              <CircleDashed size={16} /> 未結清
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          {!isFullySettled && (
+                            <button 
+                              onClick={() => openSettlementModal(charge, unpaidAmount)}
+                              className="px-3 py-1.5 bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/20 rounded-md text-sm font-medium transition-colors"
+                            >
+                              核銷
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

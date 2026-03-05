@@ -55,14 +55,21 @@ export class TenantMiddleware implements NestMiddleware {
     try {
       const payload =
         this.jwtService.verify<JwtPayloadWithTenant>(token);
+      
       const tenantId = payload?.tenantId;
       if (typeof tenantId === 'string' && tenantId.length > 0) {
         this.clsService.set(CLS_TENANT_ID_KEY, tenantId);
       }
-      // 👇 補上解析並寫入 user_id 的邏輯 (JWT 的 sub 通常是 user id)
+      
       const userId = payload?.sub;
       if (typeof userId === 'string' && userId.length > 0) {
         this.clsService.set('user_id', userId);
+      }
+
+      // 🌟 補上解析並寫入 user_role 的邏輯
+      const userRole = payload?.role;
+      if (typeof userRole === 'string' && userRole.length > 0) {
+        this.clsService.set('user_role', userRole);
       }
     } catch {
       // Token 無效或過期：不拋錯，讓請求繼續（登入／公開 API 不需 Token）
