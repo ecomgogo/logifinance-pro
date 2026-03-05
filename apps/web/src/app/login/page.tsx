@@ -1,147 +1,143 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, Mail, Lock, Coins, ArrowRight, Loader2 } from 'lucide-react';
+import { Ship, Plane, LogOut, Loader2, Package } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 
-// 👇 這裡的 export default function 是 Next.js 抓取頁面的關鍵
-export default function LoginPage() {
-  const [isLogin, setIsLogin] = useState(true);
-  const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    companyName: '',
-    baseCurrency: 'HKD',
-    email: '',
-    password: '',
-  });
+interface Shipment {
+  id: string;
+  internalNo: string;
+  mblNumber: string | null;
+  type: string;
+  createdAt: string;
+}
 
+export default function DashboardPage() {
+  const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
-  const setToken = useAuthStore((state) => state.setToken);
+  const logout = useAuthStore((state) => state.logout);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    
-    try {
-      const endpoint = isLogin ? '/auth/login' : '/auth/register';
-      const payload = isLogin 
-        ? { email: formData.email, password: formData.password }
-        : formData;
+  useEffect(() => {
+    const fetchShipments = async () => {
+      try {
+        const { data } = await api.get('/shipments');
+        setShipments(data);
+      } catch (error: any) {
+        console.error('取得運單失敗', error);
+        if (error.response?.status === 401) {
+          logout();
+          router.push('/login');
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-      const { data } = await api.post(endpoint, payload);
-      
-      setToken(data.accessToken);
-      router.push('/dashboard');
-    } catch (error: any) {
-      alert(error.response?.data?.message || '發生錯誤，請檢查資料或稍後再試');
-    } finally {
-      setIsLoading(false);
-    }
+    fetchShipments();
+  }, [logout, router]);
+
+  const handleLogout = () => {
+    logout();
+    router.push('/login');
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-black p-4">
-      <div className="w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden">
-        <div className="p-8 text-center border-b border-zinc-100 dark:border-zinc-800">
-          <div className="mx-auto bg-black dark:bg-white text-white dark:text-black w-12 h-12 rounded-xl flex items-center justify-center mb-4 shadow-lg">
-            <Building2 size={24} />
+    <div className="min-h-screen bg-zinc-50 dark:bg-black font-sans">
+      {/* 頂部導覽列 */}
+      <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="bg-black dark:bg-white text-white dark:text-black p-2 rounded-xl shadow-md">
+            <Package size={20} />
           </div>
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-white mb-2">
+          <span className="font-bold text-xl text-zinc-900 dark:text-white tracking-tight">
             LogiFinance Pro
-          </h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            {isLogin ? '歡迎回來，請登入您的帳號' : '建立您的貨代財務管理空間'}
-          </p>
+          </span>
         </div>
+        <button 
+          onClick={handleLogout}
+          className="flex items-center gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors"
+        >
+          <LogOut size={18} />
+          登出系統
+        </button>
+      </header>
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-4">
-          {!isLogin && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">公司名稱</label>
-                <div className="relative">
-                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-                  <input
-                    type="text"
-                    required
-                    className="w-full pl-10 pr-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all"
-                    placeholder="智匯國際物流"
-                    value={formData.companyName}
-                    onChange={(e) => setFormData({...formData, companyName: e.target.value})}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">系統本位幣</label>
-                <div className="relative">
-                  <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-                  <select
-                    className="w-full pl-10 pr-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all appearance-none"
-                    value={formData.baseCurrency}
-                    onChange={(e) => setFormData({...formData, baseCurrency: e.target.value})}
-                  >
-                    <option value="HKD">HKD (港幣)</option>
-                    <option value="TWD">TWD (台幣)</option>
-                    <option value="USD">USD (美金)</option>
-                  </select>
-                </div>
-              </div>
-            </>
-          )}
-
+      {/* 主要內容區 */}
+      <main className="max-w-7xl mx-auto p-6 md:p-8">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-8">
           <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">電子郵件</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-              <input
-                type="email"
-                required
-                className="w-full pl-10 pr-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all"
-                placeholder="boss@example.com"
-                value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
-              />
-            </div>
+            <h1 className="text-2xl font-bold text-zinc-900 dark:text-white mb-2">業務單總覽</h1>
+            <p className="text-zinc-500 dark:text-zinc-400">查看與管理您的所有海空運業務單與財務狀態。</p>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">密碼</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-              <input
-                type="password"
-                required
-                minLength={6}
-                className="w-full pl-10 pr-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all"
-                placeholder="••••••••"
-                value={formData.password}
-                onChange={(e) => setFormData({...formData, password: e.target.value})}
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full mt-6 bg-black dark:bg-white text-white dark:text-black py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50"
-          >
-            {isLoading ? <Loader2 className="animate-spin" size={18} /> : (isLogin ? '登入系統' : '註冊帳號')}
-            {!isLoading && <ArrowRight size={18} />}
-          </button>
-        </form>
-
-        <div className="p-4 bg-zinc-50 dark:bg-zinc-950 border-t border-zinc-100 dark:border-zinc-800 text-center">
-          <button 
-            type="button"
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-sm text-zinc-500 hover:text-black dark:hover:text-white font-medium transition-colors"
-          >
-            {isLogin ? '還沒有公司帳號？點此註冊' : '已經有帳號了？返回登入'}
+          <button className="bg-black dark:bg-white text-white dark:text-black px-5 py-2.5 rounded-lg font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all shadow-md active:scale-95">
+            + 新增運單
           </button>
         </div>
-      </div>
+
+        {/* 數據表格 */}
+        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-zinc-50 dark:bg-zinc-950/50 border-b border-zinc-200 dark:border-zinc-800">
+                  <th className="px-6 py-4 text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">內部單號</th>
+                  <th className="px-6 py-4 text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">運輸類型</th>
+                  <th className="px-6 py-4 text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">主單號 (MBL)</th>
+                  <th className="px-6 py-4 text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">建立時間</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-16 text-center text-zinc-500">
+                      <div className="flex flex-col items-center gap-3">
+                        <Loader2 className="animate-spin text-zinc-400" size={28} />
+                        <span className="font-medium">正在載入運單資料...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : shipments.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-16 text-center text-zinc-500">
+                      <div className="flex flex-col items-center gap-2">
+                        <Package size={32} className="text-zinc-300 dark:text-zinc-700 mb-2" />
+                        <p className="font-medium text-zinc-600 dark:text-zinc-400">目前沒有任何業務單</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  shipments.map((shipment) => (
+                    <tr key={shipment.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
+                      <td className="px-6 py-4">
+                        <span className="font-semibold text-zinc-900 dark:text-zinc-100">{shipment.internalNo}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold tracking-wide ${
+                          shipment.type === 'OCEAN' 
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20' 
+                            : 'bg-sky-100 text-sky-700 dark:bg-sky-500/10 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20'
+                        }`}>
+                          {shipment.type === 'OCEAN' ? <Ship size={14} /> : <Plane size={14} />}
+                          {shipment.type === 'OCEAN' ? '海運' : '空運'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-mono text-sm text-zinc-600 dark:text-zinc-300">
+                        {shipment.mblNumber || '-'}
+                      </td>
+                      <td className="px-6 py-4 text-zinc-500 text-sm">
+                        {new Date(shipment.createdAt).toLocaleDateString('zh-TW')}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

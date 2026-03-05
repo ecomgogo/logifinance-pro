@@ -1,13 +1,12 @@
-// apps/web/src/app/dashboard/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Ship, Plane, LogOut, Loader2, Package } from 'lucide-react';
+import { Ship, Plane, LogOut, Loader2, Package, TrendingUp, DollarSign, Users } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
-// 定義從後端回傳的運單型別
 interface Shipment {
   id: string;
   internalNo: string;
@@ -16,13 +15,22 @@ interface Shipment {
   createdAt: string;
 }
 
+// 模擬的月度趨勢數據 (未來可由後端 API 動態生成)
+const mockChartData = [
+  { month: '10月', ocean: 12, air: 8 },
+  { month: '11月', ocean: 15, air: 10 },
+  { month: '12月', ocean: 18, air: 12 },
+  { month: '1月', ocean: 14, air: 15 },
+  { month: '2月', ocean: 20, air: 18 },
+  { month: '3月', ocean: 24, air: 22 },
+];
+
 export default function DashboardPage() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
 
-  // 元件載入時，自動去後端抓取這家公司的所有運單
   useEffect(() => {
     const fetchShipments = async () => {
       try {
@@ -30,7 +38,6 @@ export default function DashboardPage() {
         setShipments(data);
       } catch (error: any) {
         console.error('取得運單失敗', error);
-        // 如果 Token 過期或無效，自動登出並導回登入頁
         if (error.response?.status === 401) {
           logout();
           router.push('/login');
@@ -43,16 +50,20 @@ export default function DashboardPage() {
     fetchShipments();
   }, [logout, router]);
 
-  // 登出邏輯
   const handleLogout = () => {
     logout();
     router.push('/login');
   };
 
+  // 動態計算 KPI
+  const totalShipments = shipments.length;
+  const oceanCount = shipments.filter(s => s.type === 'OCEAN').length;
+  const airCount = shipments.filter(s => s.type === 'AIR').length;
+
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black font-sans">
-      {/* 頂部導覽列 (Navbar) */}
-      <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
+    <div className="min-h-screen bg-zinc-50 dark:bg-black font-sans pb-12">
+      {/* 頂部導覽列 */}
+      <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex justify-between items-center sticky top-0 z-20 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="bg-black dark:bg-white text-white dark:text-black p-2 rounded-xl shadow-md">
             <Package size={20} />
@@ -70,24 +81,112 @@ export default function DashboardPage() {
         </button>
       </header>
 
-      {/* 主要內容區 (Main Content) */}
-      <main className="max-w-7xl mx-auto p-6 md:p-8">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-8">
+      {/* 主要內容區 */}
+      <main className="max-w-7xl mx-auto p-6 md:p-8 space-y-8">
+        
+        {/* 頁面標題 */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-zinc-900 dark:text-white mb-2">業務單總覽</h1>
-            <p className="text-zinc-500 dark:text-zinc-400">查看與管理您的所有海空運業務單與財務狀態。</p>
+            <h1 className="text-2xl font-bold text-zinc-900 dark:text-white mb-1">營運儀表板</h1>
+            <p className="text-zinc-500 dark:text-zinc-400 text-sm">歡迎回來，這是您公司目前的即時營運狀況。</p>
           </div>
-          <button className="bg-black dark:bg-white text-white dark:text-black px-5 py-2.5 rounded-lg font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all shadow-md active:scale-95">
-            + 新增運單
+          <button className="bg-black dark:bg-white text-white dark:text-black px-5 py-2.5 rounded-lg font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all shadow-md active:scale-95 flex items-center gap-2">
+            <span>+</span> 新增業務單
           </button>
         </div>
 
-        {/* 數據表格卡片 (Data Table Card) */}
+        {/* 1. KPI 數據卡片區 (Metrics Cards) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Card 1 */}
+          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-zinc-700 dark:text-zinc-300">
+                <Package size={20} />
+              </div>
+              <span className="flex items-center text-xs font-bold text-emerald-600 bg-emerald-100 dark:bg-emerald-500/10 px-2 py-1 rounded-full">
+                <TrendingUp size={12} className="mr-1" /> +12%
+              </span>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-1">本月總運單數</p>
+              <h3 className="text-3xl font-bold text-zinc-900 dark:text-white">{totalShipments > 0 ? totalShipments : '--'}</h3>
+            </div>
+          </div>
+
+          {/* Card 2 */}
+          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-3 bg-blue-50 dark:bg-blue-500/10 rounded-xl text-blue-600 dark:text-blue-400">
+                <Ship size={20} />
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-1">海運單佔比</p>
+              <h3 className="text-3xl font-bold text-zinc-900 dark:text-white">{oceanCount} <span className="text-lg text-zinc-400 font-normal">TEU</span></h3>
+            </div>
+          </div>
+
+          {/* Card 3 */}
+          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-3 bg-sky-50 dark:bg-sky-500/10 rounded-xl text-sky-600 dark:text-sky-400">
+                <Plane size={20} />
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-1">空運單佔比</p>
+              <h3 className="text-3xl font-bold text-zinc-900 dark:text-white">{airCount} <span className="text-lg text-zinc-400 font-normal">KGs</span></h3>
+            </div>
+          </div>
+
+          {/* Card 4 */}
+          <div className="bg-zinc-900 dark:bg-white p-6 rounded-2xl border border-zinc-800 dark:border-zinc-200 shadow-lg flex flex-col justify-between relative overflow-hidden">
+            <div className="absolute -right-6 -top-6 text-zinc-800 dark:text-zinc-100 opacity-50">
+              <DollarSign size={100} />
+            </div>
+            <div className="flex justify-between items-start mb-4 relative z-10">
+              <div className="p-3 bg-zinc-800 dark:bg-zinc-100 rounded-xl text-white dark:text-black">
+                <DollarSign size={20} />
+              </div>
+            </div>
+            <div className="relative z-10">
+              <p className="text-sm font-medium text-zinc-400 dark:text-zinc-500 mb-1">本月預估應收 (HKD)</p>
+              <h3 className="text-3xl font-bold text-white dark:text-black">7,800</h3>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. 互動式圖表區 (Charts) */}
+        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm p-6">
+          <h2 className="text-lg font-bold text-zinc-900 dark:text-white mb-6">近半年海空運單量趨勢</h2>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={mockChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4e4e7" />
+                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 12 }} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 12 }} />
+                <Tooltip 
+                  cursor={{ fill: 'transparent' }}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                />
+                <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }} />
+                <Bar dataKey="ocean" name="海運 (Ocean)" fill="#2563eb" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="air" name="空運 (Air)" fill="#38bdf8" radius={[4, 4, 0, 0]} maxBarSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* 3. 數據表格區 (Data Table) */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-6 py-5 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-900">
+            <h2 className="text-lg font-bold text-zinc-900 dark:text-white">最新業務單</h2>
+            <button className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">查看全部</button>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-zinc-50 dark:bg-zinc-950/50 border-b border-zinc-200 dark:border-zinc-800">
+                <tr className="bg-white dark:bg-zinc-950/50 border-b border-zinc-200 dark:border-zinc-800">
                   <th className="px-6 py-4 text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">內部單號</th>
                   <th className="px-6 py-4 text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">運輸類型</th>
                   <th className="px-6 py-4 text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">主單號 (MBL)</th>
@@ -100,7 +199,7 @@ export default function DashboardPage() {
                     <td colSpan={4} className="px-6 py-16 text-center text-zinc-500">
                       <div className="flex flex-col items-center gap-3">
                         <Loader2 className="animate-spin text-zinc-400" size={28} />
-                        <span className="font-medium">正在載入運單資料...</span>
+                        <span className="font-medium">正在同步雲端資料...</span>
                       </div>
                     </td>
                   </tr>
@@ -110,13 +209,12 @@ export default function DashboardPage() {
                       <div className="flex flex-col items-center gap-2">
                         <Package size={32} className="text-zinc-300 dark:text-zinc-700 mb-2" />
                         <p className="font-medium text-zinc-600 dark:text-zinc-400">目前沒有任何業務單</p>
-                        <p className="text-sm">點擊右上角「新增運單」來建立您的第一筆業務</p>
                       </div>
                     </td>
                   </tr>
                 ) : (
                   shipments.map((shipment) => (
-                    <tr key={shipment.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
+                    <tr key={shipment.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group bg-white dark:bg-zinc-900">
                       <td className="px-6 py-4">
                         <span className="font-semibold text-zinc-900 dark:text-zinc-100">{shipment.internalNo}</span>
                       </td>
