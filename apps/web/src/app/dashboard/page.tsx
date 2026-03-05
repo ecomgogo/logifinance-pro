@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Ship, Plane, LogOut, Loader2, Package, TrendingUp, DollarSign, Users } from 'lucide-react';
+import { Ship, Plane, LogOut, Loader2, Package, TrendingUp, DollarSign, X } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -15,7 +15,6 @@ interface Shipment {
   createdAt: string;
 }
 
-// 模擬的月度趨勢數據 (未來可由後端 API 動態生成)
 const mockChartData = [
   { month: '10月', ocean: 12, air: 8 },
   { month: '11月', ocean: 15, air: 10 },
@@ -28,31 +27,62 @@ const mockChartData = [
 export default function DashboardPage() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Modal 狀態管理
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    internalNo: '',
+    type: 'OCEAN',
+    mblNumber: ''
+  });
+
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
 
-  useEffect(() => {
-    const fetchShipments = async () => {
-      try {
-        const { data } = await api.get('/shipments');
-        setShipments(data);
-      } catch (error: any) {
-        console.error('取得運單失敗', error);
-        if (error.response?.status === 401) {
-          logout();
-          router.push('/login');
-        }
-      } finally {
-        setIsLoading(false);
+  // 將拉取資料的邏輯獨立出來，方便新增完後重新呼叫
+  const fetchShipments = useCallback(async () => {
+    try {
+      const { data } = await api.get('/shipments');
+      setShipments(data);
+    } catch (error: any) {
+      console.error('取得運單失敗', error);
+      if (error.response?.status === 401) {
+        logout();
+        router.push('/login');
       }
-    };
-
-    fetchShipments();
+    } finally {
+      setIsLoading(false);
+    }
   }, [logout, router]);
+
+  useEffect(() => {
+    fetchShipments();
+  }, [fetchShipments]);
 
   const handleLogout = () => {
     logout();
     router.push('/login');
+  };
+
+  // 處理表單送出 (建立新運單)
+  const handleCreateShipment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      // 呼叫我們在 NestJS 寫好的 POST API
+      await api.post('/shipments', formData);
+      
+      // 成功後關閉 Modal，清空表單，並重新拉取最新數據
+      setIsModalOpen(false);
+      setFormData({ internalNo: '', type: 'OCEAN', mblNumber: '' });
+      await fetchShipments(); 
+      
+    } catch (error: any) {
+      alert(error.response?.data?.message || '建立失敗，請稍後再試');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // 動態計算 KPI
@@ -61,8 +91,86 @@ export default function DashboardPage() {
   const airCount = shipments.filter(s => s.type === 'AIR').length;
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black font-sans pb-12">
-      {/* 頂部導覽列 */}
+    <div className="min-h-screen bg-zinc-50 dark:bg-black font-sans pb-12 relative">
+      
+      {/* --- 新增運單 Modal 視窗 --- */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-2xl shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-zinc-100 dark:border-zinc-800">
+              <h2 className="text-xl font-bold text-zinc-900 dark:text-white">新增業務單</h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateShipment} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">內部單號 (必填)</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="例如: SHP-2026-002"
+                  className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all"
+                  value={formData.internalNo}
+                  onChange={(e) => setFormData({...formData, internalNo: e.target.value})}
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">運輸類型</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, type: 'OCEAN'})}
+                    className={`flex items-center justify-center gap-2 py-2.5 rounded-lg border font-medium transition-all ${formData.type === 'OCEAN' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-500/10 dark:border-blue-500/30 dark:text-blue-400' : 'bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400 hover:bg-zinc-50'}`}
+                  >
+                    <Ship size={18} /> 海運
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, type: 'AIR'})}
+                    className={`flex items-center justify-center gap-2 py-2.5 rounded-lg border font-medium transition-all ${formData.type === 'AIR' ? 'bg-sky-50 border-sky-200 text-sky-700 dark:bg-sky-500/10 dark:border-sky-500/30 dark:text-sky-400' : 'bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400 hover:bg-zinc-50'}`}
+                  >
+                    <Plane size={18} /> 空運
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">主單號 MBL (選填)</label>
+                <input
+                  type="text"
+                  placeholder="例如: OOCL-999888"
+                  className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all"
+                  value={formData.mblNumber}
+                  onChange={(e) => setFormData({...formData, mblNumber: e.target.value})}
+                />
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 px-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                >
+                  {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : '確認建立'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* --- Modal 結束 --- */}
+
+
       <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex justify-between items-center sticky top-0 z-20 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="bg-black dark:bg-white text-white dark:text-black p-2 rounded-xl shadow-md">
@@ -81,31 +189,29 @@ export default function DashboardPage() {
         </button>
       </header>
 
-      {/* 主要內容區 */}
       <main className="max-w-7xl mx-auto p-6 md:p-8 space-y-8">
-        
-        {/* 頁面標題 */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
           <div>
             <h1 className="text-2xl font-bold text-zinc-900 dark:text-white mb-1">營運儀表板</h1>
             <p className="text-zinc-500 dark:text-zinc-400 text-sm">歡迎回來，這是您公司目前的即時營運狀況。</p>
           </div>
-          <button className="bg-black dark:bg-white text-white dark:text-black px-5 py-2.5 rounded-lg font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all shadow-md active:scale-95 flex items-center gap-2">
-            <span>+</span> 新增業務單
+          
+          {/* 👇 綁定開啟 Modal 的事件 */}
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-black dark:bg-white text-white dark:text-black px-5 py-2.5 rounded-lg font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all shadow-md active:scale-95"
+          >
+            + 新增業務單
           </button>
         </div>
 
-        {/* 1. KPI 數據卡片區 (Metrics Cards) */}
+        {/* 1. KPI 數據卡片區 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Card 1 */}
-          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between">
+          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between transition-all hover:shadow-md">
             <div className="flex justify-between items-start mb-4">
               <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-zinc-700 dark:text-zinc-300">
                 <Package size={20} />
               </div>
-              <span className="flex items-center text-xs font-bold text-emerald-600 bg-emerald-100 dark:bg-emerald-500/10 px-2 py-1 rounded-full">
-                <TrendingUp size={12} className="mr-1" /> +12%
-              </span>
             </div>
             <div>
               <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-1">本月總運單數</p>
@@ -113,34 +219,31 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Card 2 */}
-          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between">
+          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between transition-all hover:shadow-md">
             <div className="flex justify-between items-start mb-4">
               <div className="p-3 bg-blue-50 dark:bg-blue-500/10 rounded-xl text-blue-600 dark:text-blue-400">
                 <Ship size={20} />
               </div>
             </div>
             <div>
-              <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-1">海運單佔比</p>
-              <h3 className="text-3xl font-bold text-zinc-900 dark:text-white">{oceanCount} <span className="text-lg text-zinc-400 font-normal">TEU</span></h3>
+              <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-1">海運單總數</p>
+              <h3 className="text-3xl font-bold text-zinc-900 dark:text-white">{oceanCount} <span className="text-lg text-zinc-400 font-normal">單</span></h3>
             </div>
           </div>
 
-          {/* Card 3 */}
-          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between">
+          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between transition-all hover:shadow-md">
             <div className="flex justify-between items-start mb-4">
               <div className="p-3 bg-sky-50 dark:bg-sky-500/10 rounded-xl text-sky-600 dark:text-sky-400">
                 <Plane size={20} />
               </div>
             </div>
             <div>
-              <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-1">空運單佔比</p>
-              <h3 className="text-3xl font-bold text-zinc-900 dark:text-white">{airCount} <span className="text-lg text-zinc-400 font-normal">KGs</span></h3>
+              <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-1">空運單總數</p>
+              <h3 className="text-3xl font-bold text-zinc-900 dark:text-white">{airCount} <span className="text-lg text-zinc-400 font-normal">單</span></h3>
             </div>
           </div>
 
-          {/* Card 4 */}
-          <div className="bg-zinc-900 dark:bg-white p-6 rounded-2xl border border-zinc-800 dark:border-zinc-200 shadow-lg flex flex-col justify-between relative overflow-hidden">
+          <div className="bg-zinc-900 dark:bg-white p-6 rounded-2xl border border-zinc-800 dark:border-zinc-200 shadow-lg flex flex-col justify-between relative overflow-hidden transition-all hover:shadow-xl">
             <div className="absolute -right-6 -top-6 text-zinc-800 dark:text-zinc-100 opacity-50">
               <DollarSign size={100} />
             </div>
@@ -150,13 +253,13 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="relative z-10">
-              <p className="text-sm font-medium text-zinc-400 dark:text-zinc-500 mb-1">本月預估應收 (HKD)</p>
+              <p className="text-sm font-medium text-zinc-400 dark:text-zinc-500 mb-1">本月預估營收 (HKD)</p>
               <h3 className="text-3xl font-bold text-white dark:text-black">7,800</h3>
             </div>
           </div>
         </div>
 
-        {/* 2. 互動式圖表區 (Charts) */}
+        {/* 2. 互動式圖表區 */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm p-6">
           <h2 className="text-lg font-bold text-zinc-900 dark:text-white mb-6">近半年海空運單量趨勢</h2>
           <div className="h-[300px] w-full">
@@ -177,7 +280,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 3. 數據表格區 (Data Table) */}
+        {/* 3. 數據表格區 */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm overflow-hidden">
           <div className="px-6 py-5 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-900">
             <h2 className="text-lg font-bold text-zinc-900 dark:text-white">最新業務單</h2>

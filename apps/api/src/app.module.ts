@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth';
 import { PrismaModule } from './prisma';
+import { ShipmentModule } from './shipment/shipment.module';
 
 /**
  * AppModule：應用根模組，整合多租戶防護網。
@@ -21,6 +22,7 @@ import { PrismaModule } from './prisma';
     }),
     PrismaModule,
     AuthModule,
+    ShipmentModule,
   ],
   controllers: [AppController],
   providers: [AppService],
