@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, ParseUUIDPipe, Delete } from '@nestjs/common';
 import { ChargeService } from './charge.service';
 import { CreateChargeDto } from './charge.dto';
 import { AuthGuard } from '../auth';
@@ -13,9 +13,14 @@ export class ChargeController {
     return this.chargeService.create(dto);
   }
 
-  // 🛡️ 加上 ParseUUIDPipe：如果傳進來的不是有效 UUID (例如 "[id]")，會自動阻擋並回傳 400 錯誤
   @Get('shipment/:shipmentId')
   async findByShipment(@Param('shipmentId', ParseUUIDPipe) shipmentId: string) {
     return this.chargeService.findByShipment(shipmentId);
+  }
+
+  // 🌟 新增：刪除單筆費用的 API 端點
+  @Delete(':id')
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.chargeService.remove(id);
   }
 }

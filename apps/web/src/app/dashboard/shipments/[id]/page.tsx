@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-// 🌟 確保在這裡引入了 Printer 圖示
-import { ArrowLeft, Plus, TrendingUp, TrendingDown, DollarSign, Loader2, Building2, Receipt, CheckCircle2, CircleDashed, Banknote, Printer } from 'lucide-react';
+// 🌟 引入 Trash2 (垃圾桶) 圖示
+import { ArrowLeft, Plus, TrendingUp, TrendingDown, DollarSign, Loader2, Building2, Receipt, CheckCircle2, CircleDashed, Banknote, Printer, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
 
 interface Shipment {
@@ -80,7 +80,7 @@ export default function ShipmentDetailsPage() {
     fetchData();
   }, [fetchData]);
 
-  // 處理新增費用 (記帳)
+  // 處理新增費用
   const handleAddCharge = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -103,7 +103,21 @@ export default function ShipmentDetailsPage() {
     }
   };
 
-  // 處理核銷 (收付款)
+  // 🌟 新增：處理刪除費用
+  const handleDeleteCharge = async (chargeId: string) => {
+    const confirmDelete = window.confirm('確定要刪除這筆費用紀錄嗎？這項操作無法復原。');
+    if (!confirmDelete) return;
+
+    try {
+      await api.delete(`/charges/${chargeId}`);
+      await fetchData(); // 重新拉取資料，畫面自動更新
+    } catch (error: any) {
+      // 如果後端擋下來 (已經核銷)，會在這裡彈出警告
+      alert(error.response?.data?.message || '刪除失敗，請稍後再試');
+    }
+  };
+
+  // 處理核銷
   const handleSettle = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!settlingCharge) return;
@@ -195,7 +209,7 @@ export default function ShipmentDetailsPage() {
         </div>
       )}
 
-      {/* 核銷 (收付款) Modal */}
+      {/* 核銷 Modal */}
       {isSettlementModalOpen && settlingCharge && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity">
           <div className="bg-white dark:bg-zinc-900 w-full max-w-sm rounded-2xl shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
@@ -253,7 +267,6 @@ export default function ShipmentDetailsPage() {
 
       <main className="max-w-6xl mx-auto p-6 md:p-8 space-y-8">
         
-        {/* 🌟 核心修改區塊：加入「列印請款單」的入口按鈕 */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
           <h2 className="text-xl font-bold text-zinc-900 dark:text-white">本單利潤分析</h2>
           <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -294,7 +307,7 @@ export default function ShipmentDetailsPage() {
           </div>
         </div>
 
-        {/* 費用列表 (含核銷狀態) */}
+        {/* 費用列表 */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm overflow-hidden">
           <div className="px-6 py-5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900 flex items-center gap-2">
              <Receipt size={18} className="text-zinc-500" />
@@ -326,7 +339,7 @@ export default function ShipmentDetailsPage() {
                     const isFullySettled = unpaidAmount <= 0;
 
                     return (
-                      <tr key={charge.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                      <tr key={charge.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
                         <td className="px-6 py-4">
                           <span className={`px-2.5 py-1 rounded text-xs font-bold ${charge.arApType === 'AR' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400'}`}>
                             {charge.arApType === 'AR' ? '應收' : '應付'}
@@ -350,7 +363,7 @@ export default function ShipmentDetailsPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-right">
+                        <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
                           {!isFullySettled && (
                             <button 
                               onClick={() => openSettlementModal(charge, unpaidAmount)}
@@ -359,6 +372,15 @@ export default function ShipmentDetailsPage() {
                               核銷
                             </button>
                           )}
+                          
+                          {/* 🌟 刪除按鈕 (只有在滑鼠移過去時才明顯顯示) */}
+                          <button
+                            onClick={() => handleDeleteCharge(charge.id)}
+                            className="p-1.5 text-zinc-300 dark:text-zinc-700 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md transition-all opacity-0 group-hover:opacity-100"
+                            title="刪除此筆費用"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </td>
                       </tr>
                     );

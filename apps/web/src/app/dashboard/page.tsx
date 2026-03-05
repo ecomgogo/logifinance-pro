@@ -2,12 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-// 🌟 引入 Download 圖示
-import { Ship, Plane, LogOut, Loader2, Package, TrendingUp, DollarSign, X, Users, Settings, Award, Download } from 'lucide-react';
+// 🌟 修復 1：補上 Plus 圖示
+import { Ship, Plane, LogOut, Loader2, Package, DollarSign, X, Users, Settings, Award, Download, Plus } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-// 🌟 引入我們剛寫好的匯出工具
 import { exportToCSV } from '@/lib/export'; 
 
 interface Shipment {
@@ -20,7 +19,9 @@ interface Shipment {
 
 export default function DashboardPage() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
-  const [stats, setStats] = useState({ totalRevenue: 0, chartData: [] });
+  
+  // 🌟 修復 2：加上 <{ totalRevenue: number; chartData: any[] }> 明確定義型別，消滅紅線
+  const [stats, setStats] = useState<{ totalRevenue: number; chartData: any[] }>({ totalRevenue: 0, chartData: [] });
   const [isLoading, setIsLoading] = useState(true);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -78,7 +79,6 @@ export default function DashboardPage() {
     }
   };
 
-  // 🌟 新增：一鍵匯出運單資料為 CSV
   const handleExport = () => {
     const exportData = shipments.map(s => ({
       '內部單號': s.internalNo,
@@ -170,7 +170,6 @@ export default function DashboardPage() {
             <p className="text-zinc-500 dark:text-zinc-400 text-sm">歡迎回來，這是您公司目前的即時營運狀況。</p>
           </div>
           <div className="flex flex-wrap gap-3">
-            {/* 🌟 匯出按鈕放置於此 */}
             <button onClick={handleExport} className="bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-800 px-4 py-2.5 rounded-lg font-medium shadow-sm flex items-center gap-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors">
               <Download size={16} /> 匯出報表
             </button>
