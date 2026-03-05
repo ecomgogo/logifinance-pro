@@ -1,29 +1,47 @@
-// apps/web/src/lib/export.ts
-
+// 一般 CSV 匯出
 export function exportToCSV(data: Record<string, any>[], filename: string) {
-    if (!data || data.length === 0) {
-      alert('目前沒有資料可供匯出');
-      return;
-    }
-    
-    // 1. 取得所有欄位標題 (Object 的 Key)
+    if (!data || data.length === 0) return alert('目前沒有資料可供匯出');
     const headers = Object.keys(data[0]);
-    
-    // 2. 組裝 CSV 內容
-    // 💡 關鍵：加上 \uFEFF (BOM)，這樣 Excel 打開中文才不會變亂碼！
     const csvContent = [
       headers.join(','),
-      ...data.map(row => headers.map(header => {
-        const cell = row[header] === null || row[header] === undefined ? '' : row[header];
-        // 處理字串中可能包含的逗號或換行，並用雙引號包起來
-        return `"${String(cell).replace(/"/g, '""')}"`;
-      }).join(','))
+      ...data.map(row => headers.map(header => `"${String(row[header] || '').replace(/"/g, '""')}"`).join(','))
     ].join('\n');
   
-    // 3. 觸發瀏覽器下載
+    downloadBlob(csvContent, filename);
+  }
+  
+  // 🌟 Milestone 6: 實作金蝶 (Kingdee) 相容格式一鍵導出
+  export function exportToKingdeeCSV(chargesData: any[], filename: string) {
+    if (!chargesData || chargesData.length === 0) return alert('無資料可匯出');
+    
+    // 金蝶 K/3 或 雲星空 標準財務憑證匯出格式
+    const headers = ['憑證日期', '憑證字', '憑證號', '摘要', '科目代碼', '科目名稱', '借方金額', '貸方金額'];
+    
+    const formattedData = chargesData.map((c, index) => {
+      const isAR = c.arApType === 'AR';
+      return [
+        new Date().toISOString().split('T')[0], // 憑證日期
+        '記',                                  // 憑證字
+        String(index + 1).padStart(4, '0'),    // 憑證號
+        `物流業務帳款 - ${c.feeCode}`,         // 摘要
+        isAR ? '1122' : '2202',                // 科目代碼 (1122 應收, 2202 應付)
+        isAR ? '應收帳款' : '應付帳款',         // 科目名稱
+        isAR ? c.baseAmount : 0,               // 借方金額
+        !isAR ? c.baseAmount : 0,              // 貸方金額
+      ];
+    });
+  
+    const csvContent = [
+      headers.join(','),
+      ...formattedData.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+  
+    downloadBlob(csvContent, filename);
+  }
+  
+  function downloadBlob(csvContent: string, filename: string) {
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    
     const link = document.createElement('a');
     link.href = url;
     link.setAttribute('download', `${filename}.csv`);

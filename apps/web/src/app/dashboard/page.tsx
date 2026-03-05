@@ -1,26 +1,19 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-// 🌟 修復 1：補上 Plus 圖示
-import { Ship, Plane, LogOut, Loader2, Package, DollarSign, X, Users, Settings, Award, Download, Plus } from 'lucide-react';
+import { Ship, Plane, LogOut, Loader2, Package, DollarSign, X, Users, Settings, Award, Download, Plus, Sparkles, UploadCloud } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from 'recharts';
 import { exportToCSV } from '@/lib/export'; 
 
-interface Shipment {
-  id: string;
-  internalNo: string;
-  mblNumber: string | null;
-  type: string;
-  createdAt: string;
-}
+interface Shipment { id: string; internalNo: string; mblNumber: string | null; type: string; createdAt: string; }
+
+const PIE_COLORS = ['#2563eb', '#38bdf8'];
 
 export default function DashboardPage() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
-  
-  // 🌟 修復 2：加上 <{ totalRevenue: number; chartData: any[] }> 明確定義型別，消滅紅線
   const [stats, setStats] = useState<{ totalRevenue: number; chartData: any[] }>({ totalRevenue: 0, chartData: [] });
   const [isLoading, setIsLoading] = useState(true);
   
@@ -28,41 +21,29 @@ export default function DashboardPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({ internalNo: '', type: 'OCEAN', mblNumber: '' });
 
+  // 🌟 AI 解析專用狀態與 Ref
+  const [isParsing, setIsParsing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const router = useRouter();
   const token = useAuthStore((state) => state.token);
   const logout = useAuthStore((state) => state.logout);
 
   const fetchData = useCallback(async () => {
     try {
-      const [shipmentsRes, statsRes] = await Promise.all([
-        api.get('/shipments'),
-        api.get('/dashboard/stats')
-      ]);
+      const [shipmentsRes, statsRes] = await Promise.all([api.get('/shipments'), api.get('/dashboard/stats')]);
       setShipments(shipmentsRes.data);
       setStats(statsRes.data);
     } catch (error: any) {
-      if (error.response?.status === 401) {
-        logout();
-        router.push('/login');
-      }
+      if (error.response?.status === 401) { logout(); router.push('/login'); }
     } finally {
       setIsLoading(false);
     }
   }, [logout, router]);
 
-  useEffect(() => {
-    if (!token) {
-      setIsLoading(false);
-      router.push('/login');
-      return;
-    }
-    fetchData();
-  }, [fetchData, router, token]);
+  useEffect(() => { if (!token) { setIsLoading(false); router.push('/login'); return; } fetchData(); }, [fetchData, router, token]);
 
-  const handleLogout = () => {
-    logout();
-    router.push('/login');
-  };
+  const handleLogout = () => { logout(); router.push('/login'); };
 
   const handleCreateShipment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,33 +53,59 @@ export default function DashboardPage() {
       setIsModalOpen(false);
       setFormData({ internalNo: '', type: 'OCEAN', mblNumber: '' });
       await fetchData(); 
-    } catch (error: any) {
-      alert(error.response?.data?.message || '建立失敗，請稍後再試');
+    } catch (error: any) { alert(error.response?.data?.message || '建立失敗'); } finally { setIsSubmitting(false); }
+  };
+
+  // 🌟 核心：上傳文件並呼叫 AI 解析 API
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsParsing(true);
+    const uploadData = new FormData();
+    uploadData.append('file', file);
+
+    try {
+      // 呼叫 NestJS 的橋接 API，NestJS 會再去呼叫 Python
+      const res = await api.post('/integration/parse-doc', uploadData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      // 如果有抓到單號，就自動填入表單
+      if (res.data.extracted_mbls && res.data.extracted_mbls.length > 0) {
+        setFormData(prev => ({ ...prev, mblNumber: res.data.extracted_mbls[0] }));
+        alert(`🎉 AI 解析成功！已自動填入單號: ${res.data.extracted_mbls[0]}`);
+      } else {
+        alert('解析完成，但在文件中未能識別出標準格式的物流單號。');
+      }
+    } catch (error) {
+      alert('AI 解析失敗，請確認您的 Python FastAPI 服務 (Port 8000) 是否已啟動。');
     } finally {
-      setIsSubmitting(false);
+      setIsParsing(false);
+      if (fileInputRef.current) fileInputRef.current.value = ''; // 重置 input
     }
   };
 
   const handleExport = () => {
     const exportData = shipments.map(s => ({
-      '內部單號': s.internalNo,
-      '運輸類型': s.type === 'OCEAN' ? '海運 (Ocean)' : '空運 (Air)',
-      '主單號 (MBL)': s.mblNumber || '無',
-      '建立時間': new Date(s.createdAt).toLocaleDateString('zh-TW'),
-      '系統紀錄ID': s.id
+      '內部單號': s.internalNo, '運輸類型': s.type === 'OCEAN' ? '海運' : '空運', '主單號 (MBL)': s.mblNumber || '無', '建立時間': new Date(s.createdAt).toLocaleDateString('zh-TW')
     }));
-    
-    const today = new Date().toISOString().split('T')[0];
-    exportToCSV(exportData, `業務單總表_${today}`);
+    exportToCSV(exportData, `業務單總表`);
   };
 
   const totalShipments = shipments.length;
   const oceanCount = shipments.filter(s => s.type === 'OCEAN').length;
   const airCount = shipments.filter(s => s.type === 'AIR').length;
+  
+  const pieData = [
+    { name: '海運 (Ocean)', value: oceanCount },
+    { name: '空運 (Air)', value: airCount }
+  ];
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black font-sans pb-12 relative">
       
+      {/* 新增業務單 Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity">
           <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-2xl shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
@@ -108,37 +115,69 @@ export default function DashboardPage() {
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleCreateShipment} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">內部單號 (必填)</label>
-                <input type="text" required placeholder="例如: SHP-2026-002" className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white" value={formData.internalNo} onChange={(e) => setFormData({...formData, internalNo: e.target.value})} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">運輸類型</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button type="button" onClick={() => setFormData({...formData, type: 'OCEAN'})} className={`flex items-center justify-center gap-2 py-2.5 rounded-lg border font-medium ${formData.type === 'OCEAN' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-500/10 dark:border-blue-500/30 dark:text-blue-400' : 'bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400 hover:bg-zinc-50'}`}>
-                    <Ship size={18} /> 海運
-                  </button>
-                  <button type="button" onClick={() => setFormData({...formData, type: 'AIR'})} className={`flex items-center justify-center gap-2 py-2.5 rounded-lg border font-medium ${formData.type === 'AIR' ? 'bg-sky-50 border-sky-200 text-sky-700 dark:bg-sky-500/10 dark:border-sky-500/30 dark:text-sky-400' : 'bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400 hover:bg-zinc-50'}`}>
-                    <Plane size={18} /> 空運
+            
+            <div className="p-6">
+              {/* 🌟 AI 智能建單上傳區塊 */}
+              <div className="mb-6 p-4 bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/30 rounded-xl relative overflow-hidden">
+                <div className="flex items-center justify-between relative z-10">
+                  <div>
+                    <h3 className="text-sm font-bold text-purple-900 dark:text-purple-300 flex items-center gap-1.5">
+                      <Sparkles size={16} /> AI 智能解析建單
+                    </h3>
+                    <p className="text-xs text-purple-700 dark:text-purple-400 mt-1">上傳 PDF 提單，自動提取主單號</p>
+                  </div>
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    ref={fileInputRef} 
+                    accept=".pdf,.csv,.txt"
+                    onChange={handleFileUpload}
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isParsing}
+                    className="flex items-center gap-2 bg-purple-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-50 shadow-sm"
+                  >
+                    {isParsing ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
+                    {isParsing ? '解析中...' : '上傳文件'}
                   </button>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">主單號 MBL (選填)</label>
-                <input type="text" placeholder="例如: OOCL-999888" className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white" value={formData.mblNumber} onChange={(e) => setFormData({...formData, mblNumber: e.target.value})} />
-              </div>
-              <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg font-medium hover:bg-zinc-50">取消</button>
-                <button type="submit" disabled={isSubmitting} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-zinc-800 disabled:opacity-50">
-                  {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : '確認建立'}
-                </button>
-              </div>
-            </form>
+
+              <form onSubmit={handleCreateShipment} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">內部單號 (必填)</label>
+                  <input type="text" required placeholder="例如: SHP-2026-002" className="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white" value={formData.internalNo} onChange={(e) => setFormData({...formData, internalNo: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">運輸類型</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button type="button" onClick={() => setFormData({...formData, type: 'OCEAN'})} className={`flex items-center justify-center gap-2 py-2.5 rounded-lg border font-medium ${formData.type === 'OCEAN' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-500/10 dark:border-blue-500/30 dark:text-blue-400' : 'bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400 hover:bg-zinc-50'}`}>
+                      <Ship size={18} /> 海運
+                    </button>
+                    <button type="button" onClick={() => setFormData({...formData, type: 'AIR'})} className={`flex items-center justify-center gap-2 py-2.5 rounded-lg border font-medium ${formData.type === 'AIR' ? 'bg-sky-50 border-sky-200 text-sky-700 dark:bg-sky-500/10 dark:border-sky-500/30 dark:text-sky-400' : 'bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400 hover:bg-zinc-50'}`}>
+                      <Plane size={18} /> 空運
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">主單號 MBL (可由 AI 自動帶入)</label>
+                  <input type="text" placeholder="例如: OOCL-999888" className="w-full px-4 py-2 bg-purple-50 dark:bg-purple-900/10 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all font-mono" value={formData.mblNumber} onChange={(e) => setFormData({...formData, mblNumber: e.target.value})} />
+                </div>
+                <div className="pt-4 flex gap-3">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg font-medium hover:bg-zinc-50">取消</button>
+                  <button type="submit" disabled={isSubmitting} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-zinc-800 disabled:opacity-50">
+                    {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : '確認建立'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
 
+      {/* --- 頁面標頭與導覽列 --- */}
       <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex justify-between items-center sticky top-0 z-20 shadow-sm">
         <div className="flex items-center gap-8">
           <div className="flex items-center gap-3">
@@ -147,20 +186,12 @@ export default function DashboardPage() {
           </div>
           <nav className="hidden md:flex items-center gap-6">
             <span className="text-sm font-bold text-zinc-900 dark:text-white border-b-2 border-black dark:border-white py-1">業務總覽</span>
-            <button onClick={() => router.push('/dashboard/partners')} className="text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-white py-1 transition-colors flex items-center gap-1.5">
-              <Users size={16} /> 對帳中心
-            </button>
-            <button onClick={() => router.push('/dashboard/team')} className="text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-white py-1 transition-colors flex items-center gap-1.5">
-              <Settings size={16} /> 團隊管理
-            </button>
-            <button onClick={() => router.push('/dashboard/commissions')} className="text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-white py-1 transition-colors flex items-center gap-1.5">
-              <Award size={16} /> 業績結算
-            </button>
+            <button onClick={() => router.push('/dashboard/partners')} className="text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-white py-1 flex items-center gap-1.5"><Users size={16} /> 對帳中心</button>
+            <button onClick={() => router.push('/dashboard/team')} className="text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-white py-1 flex items-center gap-1.5"><Settings size={16} /> 團隊管理</button>
+            <button onClick={() => router.push('/dashboard/commissions')} className="text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-white py-1 flex items-center gap-1.5"><Award size={16} /> 業績結算</button>
           </nav>
         </div>
-        <button onClick={handleLogout} className="flex items-center gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors">
-          <LogOut size={18} /> 登出系統
-        </button>
+        <button onClick={handleLogout} className="flex items-center gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white"><LogOut size={18} /> 登出</button>
       </header>
 
       <main className="max-w-7xl mx-auto p-6 md:p-8 space-y-8">
@@ -170,75 +201,70 @@ export default function DashboardPage() {
             <p className="text-zinc-500 dark:text-zinc-400 text-sm">歡迎回來，這是您公司目前的即時營運狀況。</p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <button onClick={handleExport} className="bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-800 px-4 py-2.5 rounded-lg font-medium shadow-sm flex items-center gap-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors">
-              <Download size={16} /> 匯出報表
-            </button>
-            <button onClick={() => setIsModalOpen(true)} className="bg-black dark:bg-white text-white dark:text-black px-5 py-2.5 rounded-lg font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all shadow-md active:scale-95 flex items-center gap-2 text-sm">
-              <Plus size={16} /> 新增業務單
-            </button>
+            <button onClick={handleExport} className="bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-800 px-4 py-2.5 rounded-lg font-medium shadow-sm flex items-center gap-2 text-sm hover:bg-zinc-50 transition-colors"><Download size={16} /> 匯出報表</button>
+            <button onClick={() => setIsModalOpen(true)} className="bg-black dark:bg-white text-white dark:text-black px-5 py-2.5 rounded-lg font-medium shadow-md flex items-center gap-2 text-sm active:scale-95 transition-transform"><Plus size={16} /> 新增業務單</button>
           </div>
         </div>
 
-        {/* 1. KPI 數據卡片區 */}
+        {/* KPI Cards... */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between hover:shadow-md">
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-zinc-700 dark:text-zinc-300"><Package size={20} /></div>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-1">本月總運單數</p>
-              <h3 className="text-3xl font-bold text-zinc-900 dark:text-white">{totalShipments > 0 ? totalShipments : '--'}</h3>
-            </div>
+          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start mb-4"><div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-zinc-700 dark:text-zinc-300"><Package size={20} /></div></div>
+            <div><p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-1">本月總運單數</p><h3 className="text-3xl font-bold text-zinc-900 dark:text-white">{totalShipments > 0 ? totalShipments : '--'}</h3></div>
           </div>
-          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between hover:shadow-md">
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-3 bg-blue-50 dark:bg-blue-500/10 rounded-xl text-blue-600 dark:text-blue-400"><Ship size={20} /></div>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-1">海運單總數</p>
-              <h3 className="text-3xl font-bold text-zinc-900 dark:text-white">{oceanCount} <span className="text-lg text-zinc-400 font-normal">單</span></h3>
-            </div>
+          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start mb-4"><div className="p-3 bg-blue-50 dark:bg-blue-500/10 rounded-xl text-blue-600 dark:text-blue-400"><Ship size={20} /></div></div>
+            <div><p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-1">海運單總數</p><h3 className="text-3xl font-bold text-zinc-900 dark:text-white">{oceanCount} <span className="text-lg text-zinc-400 font-normal">單</span></h3></div>
           </div>
-          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between hover:shadow-md">
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-3 bg-sky-50 dark:bg-sky-500/10 rounded-xl text-sky-600 dark:text-sky-400"><Plane size={20} /></div>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-1">空運單總數</p>
-              <h3 className="text-3xl font-bold text-zinc-900 dark:text-white">{airCount} <span className="text-lg text-zinc-400 font-normal">單</span></h3>
-            </div>
+          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start mb-4"><div className="p-3 bg-sky-50 dark:bg-sky-500/10 rounded-xl text-sky-600 dark:text-sky-400"><Plane size={20} /></div></div>
+            <div><p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-1">空運單總數</p><h3 className="text-3xl font-bold text-zinc-900 dark:text-white">{airCount} <span className="text-lg text-zinc-400 font-normal">單</span></h3></div>
           </div>
-          <div className="bg-zinc-900 dark:bg-white p-6 rounded-2xl border border-zinc-800 dark:border-zinc-200 shadow-lg flex flex-col justify-between relative overflow-hidden hover:shadow-xl">
+          <div className="bg-zinc-900 dark:bg-white p-6 rounded-2xl border border-zinc-800 dark:border-zinc-200 shadow-lg flex flex-col justify-between relative overflow-hidden hover:shadow-xl transition-shadow">
             <div className="absolute -right-6 -top-6 text-zinc-800 dark:text-zinc-100 opacity-50"><DollarSign size={100} /></div>
-            <div className="flex justify-between items-start mb-4 relative z-10">
-              <div className="p-3 bg-zinc-800 dark:bg-zinc-100 rounded-xl text-white dark:text-black"><DollarSign size={20} /></div>
+            <div className="flex justify-between items-start mb-4 relative z-10"><div className="p-3 bg-zinc-800 dark:bg-zinc-100 rounded-xl text-white dark:text-black"><DollarSign size={20} /></div></div>
+            <div className="relative z-10"><p className="text-sm font-medium text-zinc-400 dark:text-zinc-500 mb-1">累計總營收 (Base)</p><h3 className="text-3xl font-bold text-white dark:text-black">{stats.totalRevenue.toLocaleString()}</h3></div>
+          </div>
+        </div>
+
+        {/* 數據可視化區塊 */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm p-6">
+            <h2 className="text-lg font-bold text-zinc-900 dark:text-white mb-6">近半年海空運單量趨勢</h2>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4e4e7" />
+                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 12 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 12 }} allowDecimals={false} />
+                  <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }} />
+                  <Bar dataKey="ocean" name="海運 (Ocean)" fill="#2563eb" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                  <Bar dataKey="air" name="空運 (Air)" fill="#38bdf8" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-            <div className="relative z-10">
-              <p className="text-sm font-medium text-zinc-400 dark:text-zinc-500 mb-1">累計總營收 (Base)</p>
-              <h3 className="text-3xl font-bold text-white dark:text-black">{stats.totalRevenue.toLocaleString()}</h3>
+          </div>
+
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm p-6 flex flex-col">
+            <h2 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">運輸類型佔比</h2>
+            <div className="flex-1 min-h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value">
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Legend iconType="circle" />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>
 
-        {/* 2. 互動式圖表區 */}
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm p-6">
-          <h2 className="text-lg font-bold text-zinc-900 dark:text-white mb-6">近半年海空運單量趨勢</h2>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4e4e7" />
-                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 12 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 12 }} allowDecimals={false} />
-                <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }} />
-                <Bar dataKey="ocean" name="海運 (Ocean)" fill="#2563eb" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                <Bar dataKey="air" name="空運 (Air)" fill="#38bdf8" radius={[4, 4, 0, 0]} maxBarSize={40} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* 3. 數據表格區 */}
+        {/* 數據表格區 */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm overflow-hidden">
           <div className="px-6 py-5 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-900">
             <h2 className="text-lg font-bold text-zinc-900 dark:text-white">最新業務單</h2>

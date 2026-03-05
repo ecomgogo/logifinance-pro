@@ -10,6 +10,7 @@ import { SettlementModule } from './settlement/settlement.module';
 import { PartnerModule } from './partner/partner.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { UserModule } from './user/user.module'; // 🌟 引入新模組
+import { IntegrationModule } from './integration/integration.module';
 
 @Module({
   imports: [
@@ -24,7 +25,8 @@ import { UserModule } from './user/user.module'; // 🌟 引入新模組
     SettlementModule,
     PartnerModule,
     DashboardModule,
-    UserModule, // 🌟 註冊 UserModule
+    UserModule, 
+    IntegrationModule,
   ],
   controllers: [AppController],
   providers: [AppService],
