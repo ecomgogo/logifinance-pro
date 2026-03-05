@@ -1,5 +1,5 @@
 import { Global, Module } from '@nestjs/common';
-import { PrismaService } from './prisma.service';
+import { PrismaClientProvider, PrismaService } from './prisma.service';
 
 /**
  * PrismaModule：提供具 Supabase RLS 支援的 PrismaService。
@@ -10,7 +10,7 @@ import { PrismaService } from './prisma.service';
  */
 @Global()
 @Module({
-  providers: [PrismaService],
+  providers: [PrismaClientProvider, PrismaService],
   exports: [PrismaService],
 })
 export class PrismaModule {}

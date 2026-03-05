@@ -1,7 +1,26 @@
-import { Controller, Post, Get, Param, Body, UploadedFile, UseInterceptors, Headers, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpException,
+  HttpStatus,
+  Param,
+  Post,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { AuthGuard } from '../auth';
 import { IntegrationService } from './integration.service';
 import { RedisService } from '../redis/redis.service';
+
+interface UploadedFilePayload {
+  buffer: Buffer;
+  mimetype: string;
+  originalname: string;
+}
 
 @Controller('integration')
 export class IntegrationController {
@@ -14,21 +33,10 @@ export class IntegrationController {
   // 🌟 Milestone 4: Python AI 解析服務
   // =================================================================
   @Post('parse-doc')
+  @UseGuards(AuthGuard)
   @UseInterceptors(FileInterceptor('file'))
-  async parseDoc(@UploadedFile() file: any) { 
-    const formData = new (globalThis as any).FormData();
-    const blob = new (globalThis as any).Blob([file.buffer], { type: file.mimetype });
-    formData.append('file', blob, file.originalname);
-
-    try {
-      const response = await fetch('http://127.0.0.1:8000/parse', {
-        method: 'POST',
-        body: formData,
-      });
-      return await response.json();
-    } catch (error) {
-      return { error: '無法連線至 Python 解析服務，請確認 FastAPI 是否啟動在 Port 8000' };
-    }
+  async parseDoc(@UploadedFile() file: UploadedFilePayload) {
+    return this.integrationService.parseDocument(file);
   }
 
   // =================================================================

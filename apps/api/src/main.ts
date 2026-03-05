@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import { DecimalInterceptor } from './common/interceptors/decimal.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -20,7 +21,10 @@ async function bootstrap() {
     }),
   );
 
-  // 🚀 3. 監聽 3000 Port
+  // 💰 3. 全域 Decimal 序列化攔截器：統一將 Decimal 轉為字串，避免回傳 { d, e, s }
+  app.useGlobalInterceptors(new DecimalInterceptor());
+
+  // 🚀 4. 監聽 3000 Port
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();
