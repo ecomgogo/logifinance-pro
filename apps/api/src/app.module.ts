@@ -6,7 +6,8 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth';
 import { PrismaModule } from './prisma';
 import { ShipmentModule } from './shipment/shipment.module';
-import { ChargeModule } from './charge/charge.module'; // 👈 1. 引入新建立的 ChargeModule
+import { ChargeModule } from './charge/charge.module';
+import { SettlementModule } from './settlement/settlement.module'; // 👈 1. 引入新建立的 SettlementModule
 
 /**
  * AppModule：應用根模組，整合多租戶防護網。
@@ -25,7 +26,8 @@ import { ChargeModule } from './charge/charge.module'; // 👈 1. 引入新建�
     PrismaModule,
     AuthModule,
     ShipmentModule,
-    ChargeModule, // 👈 2. 將 ChargeModule 註冊到系統中
+    ChargeModule,
+    SettlementModule, // 👈 2. 將 SettlementModule 註冊到系統中
   ],
   controllers: [AppController],
   providers: [AppService],

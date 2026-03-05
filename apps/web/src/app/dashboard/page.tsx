@@ -324,9 +324,14 @@ export default function DashboardPage() {
                   </tr>
                 ) : (
                   shipments.map((shipment) => (
-                    <tr key={shipment.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group bg-white dark:bg-zinc-900">
+                    // 🌟 關鍵修改區域：加入 onClick 與 cursor-pointer
+                    <tr 
+                      key={shipment.id} 
+                      className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group bg-white dark:bg-zinc-900 cursor-pointer"
+                      onClick={() => router.push(`/dashboard/shipments/${shipment.id}`)}
+                    >
                       <td className="px-6 py-4">
-                        <span className="font-semibold text-zinc-900 dark:text-zinc-100">{shipment.internalNo}</span>
+                        <span className="font-semibold text-zinc-900 dark:text-zinc-100 group-hover:text-blue-600 transition-colors">{shipment.internalNo}</span>
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold tracking-wide ${
@@ -341,8 +346,9 @@ export default function DashboardPage() {
                       <td className="px-6 py-4 font-mono text-sm text-zinc-600 dark:text-zinc-300">
                         {shipment.mblNumber || '-'}
                       </td>
-                      <td className="px-6 py-4 text-zinc-500 text-sm">
+                      <td className="px-6 py-4 text-zinc-500 text-sm flex items-center justify-between">
                         {new Date(shipment.createdAt).toLocaleDateString('zh-TW')}
+                        <span className="text-zinc-300 dark:text-zinc-700 group-hover:text-blue-500 transition-colors">→</span>
                       </td>
                     </tr>
                   ))

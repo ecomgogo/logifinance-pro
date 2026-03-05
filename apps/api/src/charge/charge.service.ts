@@ -49,7 +49,8 @@ export class ChargeService {
       where: { shipmentId },
       orderBy: { createdAt: 'desc' },
       include: {
-        partner: { select: { name: true } }
+        partner: { select: { name: true } },
+        settlements: true // 🌟 補上這行：把核銷紀錄一起撈給前端算餘額！
       }
     });
   }

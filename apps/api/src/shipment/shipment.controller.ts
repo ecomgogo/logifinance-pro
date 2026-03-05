@@ -1,8 +1,7 @@
-// apps/api/src/shipment/shipment.controller.ts
-import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Param, ParseUUIDPipe } from '@nestjs/common';
 import { ShipmentService } from './shipment.service';
 import { CreateShipmentDto } from './shipment.dto';
-import { AuthGuard } from '../auth'; // 🌟 關鍵修改：直接從 ../auth 引入，乾淨又不會錯！
+import { AuthGuard } from '../auth';
 
 @Controller('shipments') 
 @UseGuards(AuthGuard) 
@@ -17,5 +16,11 @@ export class ShipmentController {
   @Get()
   async findAll() {
     return this.shipmentService.findAll();
+  }
+
+  // 🛡️ 同樣加上 ParseUUIDPipe 防護
+  @Get(':id')
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.shipmentService.findOne(id);
   }
 }

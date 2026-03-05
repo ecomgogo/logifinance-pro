@@ -1,0 +1,11 @@
+import { Module } from '@nestjs/common';
+import { SettlementController } from './settlement.controller';
+import { SettlementService } from './settlement.service';
+import { PrismaModule } from '../prisma/prisma.module';
+
+@Module({
+  imports: [PrismaModule],
+  controllers: [SettlementController],
+  providers: [SettlementService],
+})
+export class SettlementModule {}
