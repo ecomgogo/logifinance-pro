@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Body } from '@nestjs/common';
+// apps/api/src/shipment/shipment.controller.ts
+import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
 import { ShipmentService } from './shipment.service';
 import { CreateShipmentDto } from './shipment.dto';
+import { AuthGuard } from '../auth/auth.guard'; // ✅ 現在這個檔案存在了！
 
-// 🚨 注意這裡必須是複數 'shipments'，才能對應前端的 API
 @Controller('shipments') 
+@UseGuards(AuthGuard) // 🛡️ 啟動守衛防護
 export class ShipmentController {
   constructor(private readonly shipmentService: ShipmentService) {}
 

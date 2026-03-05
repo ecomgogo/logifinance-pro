@@ -59,6 +59,11 @@ export class TenantMiddleware implements NestMiddleware {
       if (typeof tenantId === 'string' && tenantId.length > 0) {
         this.clsService.set(CLS_TENANT_ID_KEY, tenantId);
       }
+      // 👇 補上解析並寫入 user_id 的邏輯 (JWT 的 sub 通常是 user id)
+      const userId = payload?.sub;
+      if (typeof userId === 'string' && userId.length > 0) {
+        this.clsService.set('user_id', userId);
+      }
     } catch {
       // Token 無效或過期：不拋錯，讓請求繼續（登入／公開 API 不需 Token）
     }
