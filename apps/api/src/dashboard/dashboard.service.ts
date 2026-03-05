@@ -10,29 +10,38 @@ export class DashboardService {
   ) {}
 
   async getStats() {
-    const tenantId = this.cls.get('tenant_id');
-    const userId = this.cls.get('user_id');
-    const userRole = this.cls.get('user_role');
+    // 🌟 加上 as string 明確告訴 TypeScript 這些變數是字串
+    const tenantId = this.cls.get('tenant_id') as string;
+    const userId = this.cls.get('user_id') as string;
+    const userRole = this.cls.get('user_role') as string;
 
-    // 🌟 核心：如果是業務 (SALES)，只算他自己的業績；如果是老闆 (BOSS)，算全公司的業績！
-    const shipmentWhere = userRole === 'SALES' ? { tenantId, salesId: userId } : { tenantId };
+    // 🌟 解決 Prisma Where 型別衝突：改用物件動態賦值
+    const shipmentWhere: any = { tenantId };
+    if (userRole === 'SALES') {
+      shipmentWhere.salesId = userId;
+    }
 
     // 1. 計算應收營收 (AR)
     const shipments = await this.prisma.client.shipment.findMany({
       where: shipmentWhere,
       select: { id: true }
     });
+    
     const shipmentIds = shipments.map(s => s.id);
 
-    const arCharges = await this.prisma.client.charge.aggregate({
-      where: {
-        tenantId,
-        shipmentId: { in: shipmentIds },
-        arApType: 'AR'
-      },
-      _sum: { baseAmount: true }
-    });
-    const totalRevenue = Number(arCharges._sum.baseAmount || 0);
+    // 如果沒有任何運單，直接跳過聚合計算，避免 Prisma 報錯
+    let totalRevenue = 0;
+    if (shipmentIds.length > 0) {
+      const arCharges = await this.prisma.client.charge.aggregate({
+        where: {
+          tenantId,
+          shipmentId: { in: shipmentIds },
+          arApType: 'AR'
+        },
+        _sum: { baseAmount: true }
+      });
+      totalRevenue = Number(arCharges._sum.baseAmount || 0);
+    }
 
     // 2. 計算過去 6 個月的圖表趨勢資料
     const sixMonthsAgo = new Date();
@@ -41,12 +50,16 @@ export class DashboardService {
     sixMonthsAgo.setHours(0, 0, 0, 0);
 
     const recentShipments = await this.prisma.client.shipment.findMany({
-      where: { ...shipmentWhere, createdAt: { gte: sixMonthsAgo } },
+      where: {
+        ...shipmentWhere,
+        createdAt: { gte: sixMonthsAgo }
+      },
       select: { type: true, createdAt: true }
     });
 
-    // 初始化 6 個月的空陣列
-    const chartData = [];
+    // 🌟 解決 TypeScript 隱式 any[] 報錯：明確定義陣列內容的型別
+    const chartData: { month: string; ocean: number; air: number; yearMonth: string }[] = [];
+    
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);

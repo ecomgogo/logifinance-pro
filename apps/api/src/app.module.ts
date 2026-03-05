@@ -8,7 +8,8 @@ import { ShipmentModule } from './shipment/shipment.module';
 import { ChargeModule } from './charge/charge.module';
 import { SettlementModule } from './settlement/settlement.module';
 import { PartnerModule } from './partner/partner.module';
-import { DashboardModule } from './dashboard/dashboard.module'; // 🌟 引入新的模組
+import { DashboardModule } from './dashboard/dashboard.module';
+import { UserModule } from './user/user.module'; // 🌟 引入新模組
 
 @Module({
   imports: [
@@ -22,7 +23,8 @@ import { DashboardModule } from './dashboard/dashboard.module'; // 🌟 引入�
     ChargeModule,
     SettlementModule,
     PartnerModule,
-    DashboardModule, // 🌟 註冊
+    DashboardModule,
+    UserModule, // 🌟 註冊 UserModule
   ],
   controllers: [AppController],
   providers: [AppService],

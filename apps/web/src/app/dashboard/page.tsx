@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Ship, Plane, LogOut, Loader2, Package, TrendingUp, DollarSign, X, Users } from 'lucide-react';
+// 🌟 確保這裡有 Award 圖示
+import { Ship, Plane, LogOut, Loader2, Package, TrendingUp, DollarSign, X, Users, Settings, Award } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -17,7 +18,6 @@ interface Shipment {
 
 export default function DashboardPage() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
-  // 🌟 新增：存放真實的營收與圖表數據
   const [stats, setStats] = useState({ totalRevenue: 0, chartData: [] });
   const [isLoading, setIsLoading] = useState(true);
   
@@ -31,7 +31,6 @@ export default function DashboardPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      // 🌟 同時拉取運單列表與統計數據
       const [shipmentsRes, statsRes] = await Promise.all([
         api.get('/shipments'),
         api.get('/dashboard/stats')
@@ -84,7 +83,6 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black font-sans pb-12 relative">
       
-      {/* 新增運單 Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity">
           <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-2xl shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
@@ -125,7 +123,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 頁首 */}
       <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex justify-between items-center sticky top-0 z-20 shadow-sm">
         <div className="flex items-center gap-8">
           <div className="flex items-center gap-3">
@@ -136,6 +133,13 @@ export default function DashboardPage() {
             <span className="text-sm font-bold text-zinc-900 dark:text-white border-b-2 border-black dark:border-white py-1">業務總覽</span>
             <button onClick={() => router.push('/dashboard/partners')} className="text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-white py-1 transition-colors flex items-center gap-1.5">
               <Users size={16} /> 對帳中心
+            </button>
+            <button onClick={() => router.push('/dashboard/team')} className="text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-white py-1 transition-colors flex items-center gap-1.5">
+              <Settings size={16} /> 團隊管理
+            </button>
+            {/* 🌟 新增：業績結算入口 */}
+            <button onClick={() => router.push('/dashboard/commissions')} className="text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-white py-1 transition-colors flex items-center gap-1.5">
+              <Award size={16} /> 業績結算
             </button>
           </nav>
         </div>
@@ -151,8 +155,11 @@ export default function DashboardPage() {
             <p className="text-zinc-500 dark:text-zinc-400 text-sm">歡迎回來，這是您公司目前的即時營運狀況。</p>
           </div>
           <div className="flex gap-3">
-            <button onClick={() => router.push('/dashboard/partners')} className="md:hidden bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-800 px-4 py-2.5 rounded-lg font-medium shadow-sm flex items-center gap-2 text-sm">
-              <Users size={16} /> 對帳中心
+            <button onClick={() => router.push('/dashboard/commissions')} className="md:hidden bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-800 px-4 py-2.5 rounded-lg font-medium shadow-sm flex items-center gap-2 text-sm">
+              <Award size={16} /> 結算
+            </button>
+            <button onClick={() => router.push('/dashboard/team')} className="md:hidden bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-800 px-4 py-2.5 rounded-lg font-medium shadow-sm flex items-center gap-2 text-sm">
+              <Settings size={16} /> 團隊
             </button>
             <button onClick={() => setIsModalOpen(true)} className="bg-black dark:bg-white text-white dark:text-black px-5 py-2.5 rounded-lg font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all shadow-md active:scale-95">
               + 新增業務單
@@ -195,7 +202,6 @@ export default function DashboardPage() {
               <div className="p-3 bg-zinc-800 dark:bg-zinc-100 rounded-xl text-white dark:text-black"><DollarSign size={20} /></div>
             </div>
             <div className="relative z-10">
-              {/* 🌟 替換為真實營收 */}
               <p className="text-sm font-medium text-zinc-400 dark:text-zinc-500 mb-1">累計總營收 (Base)</p>
               <h3 className="text-3xl font-bold text-white dark:text-black">{stats.totalRevenue.toLocaleString()}</h3>
             </div>
@@ -204,10 +210,9 @@ export default function DashboardPage() {
 
         {/* 2. 互動式圖表區 */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm p-6">
-          <h2 className="text-lg font-bold text-zinc-900 dark:text-white mb-6">近半年海空運單量趨勢 (真實數據)</h2>
+          <h2 className="text-lg font-bold text-zinc-900 dark:text-white mb-6">近半年海空運單量趨勢</h2>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              {/* 🌟 替換為真實圖表數據 */}
               <BarChart data={stats.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4e4e7" />
                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 12 }} dy={10} />
