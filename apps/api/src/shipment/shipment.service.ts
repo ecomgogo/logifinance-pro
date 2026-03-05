@@ -1,3 +1,4 @@
+// apps/api/src/shipment/shipment.service.ts
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateShipmentDto } from './shipment.dto';
@@ -18,8 +19,8 @@ export class ShipmentService {
     // 2. 建立資料庫紀錄，將兩個必填的關聯 ID 都放進去
     return this.prisma.client.shipment.create({
       data: {
-        tenantId: tenantId, // ✅ 補上這家公司的 ID
-        salesId: userId,    // ✅ 補上這個員工的 ID
+        tenantId: tenantId,
+        salesId: userId,
         internalNo: dto.internalNo,
         type: dto.type,
         mblNumber: dto.mblNumber,
@@ -30,6 +31,18 @@ export class ShipmentService {
   async findAll() {
     return this.prisma.client.shipment.findMany({
       orderBy: { createdAt: 'desc' },
+      include: {
+        sales: {
+          select: { email: true, role: true }
+        }
+      }
+    });
+  }
+
+  // 👇 新增：讀取單筆運單資料
+  async findOne(id: string) {
+    return this.prisma.client.shipment.findUnique({
+      where: { id },
       include: {
         sales: {
           select: { email: true, role: true }
