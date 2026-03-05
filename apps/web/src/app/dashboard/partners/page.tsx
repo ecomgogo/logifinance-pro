@@ -2,8 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, Users, Building2, AlertCircle, CheckCircle2 } from 'lucide-react';
+// 🌟 引入 Download 圖示
+import { ArrowLeft, Loader2, Users, Building2, AlertCircle, CheckCircle2, Download } from 'lucide-react';
 import api from '@/lib/api';
+// 🌟 引入匯出引擎
+import { exportToCSV } from '@/lib/export';
 
 interface Settlement {
   paidAmount: number;
@@ -43,20 +46,57 @@ export default function PartnersPage() {
     fetchPartners();
   }, [fetchPartners]);
 
+  // 🌟 新增：匯出會計對帳單
+  const handleExport = () => {
+    const exportData = partners.map(p => {
+      let totalAR = 0; let totalARPaid = 0;
+      let totalAP = 0; let totalAPPaid = 0;
+
+      p.charges.forEach(charge => {
+        const amount = Number(charge.baseAmount);
+        const paid = charge.settlements.reduce((sum, s) => sum + Number(s.paidAmount), 0);
+        if (charge.arApType === 'AR') {
+          totalAR += amount; totalARPaid += paid;
+        } else {
+          totalAP += amount; totalAPPaid += paid;
+        }
+      });
+
+      return {
+        '業務夥伴名稱': p.name,
+        '夥伴類型': p.type === 'Customer' ? '客戶' : '供應商',
+        '總應收 (AR)': totalAR,
+        '應收未收 (客戶欠款)': totalAR - totalARPaid,
+        '總應付 (AP)': totalAP,
+        '應付未付 (我方欠款)': totalAP - totalAPPaid,
+      };
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    exportToCSV(exportData, `會計對帳總表_${today}`);
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black font-sans pb-12">
-      <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex items-center sticky top-0 z-20 shadow-sm">
-        <button onClick={() => router.push('/dashboard')} className="p-2 mr-4 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl transition-colors">
-          <ArrowLeft size={18} />
-        </button>
-        <div className="flex items-center gap-3">
-          <div className="bg-black dark:bg-white text-white dark:text-black p-1.5 rounded-lg shadow-md">
-            <Users size={20} />
+      <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex justify-between items-center sticky top-0 z-20 shadow-sm">
+        <div className="flex items-center gap-4">
+          <button onClick={() => router.push('/dashboard')} className="p-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl transition-colors">
+            <ArrowLeft size={18} />
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="bg-black dark:bg-white text-white dark:text-black p-1.5 rounded-lg shadow-md">
+              <Users size={20} />
+            </div>
+            <h1 className="font-bold text-xl text-zinc-900 dark:text-white tracking-tight">
+              對帳中心 <span className="text-sm font-normal text-zinc-500 ml-2">客戶與供應商總帳</span>
+            </h1>
           </div>
-          <h1 className="font-bold text-xl text-zinc-900 dark:text-white tracking-tight">
-            對帳中心 <span className="text-sm font-normal text-zinc-500 ml-2">客戶與供應商總帳</span>
-          </h1>
         </div>
+        
+        {/* 🌟 匯出按鈕 */}
+        <button onClick={handleExport} className="bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 px-4 py-2.5 rounded-lg font-medium hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-all flex items-center gap-2 text-sm">
+          <Download size={16} /> 匯出會計對帳單
+        </button>
       </header>
 
       <main className="max-w-6xl mx-auto p-6 md:p-8 space-y-8">
@@ -86,7 +126,6 @@ export default function PartnersPage() {
                   </tr>
                 ) : (
                   partners.map((partner) => {
-                    // 🌟 動態計算此夥伴的所有 AR 欠款與 AP 欠款
                     let totalAR = 0; let totalARPaid = 0;
                     let totalAP = 0; let totalAPPaid = 0;
 

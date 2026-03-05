@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ClsService } from 'nestjs-cls';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './user.dto';
+import { UserRole } from '../../generated/prisma'; // 🌟 關鍵修復 1：引入 Prisma 自動生成的 Enum
 
 @Injectable()
 export class UserService {
@@ -28,7 +29,7 @@ export class UserService {
         tenantId,
         email: dto.email,
         passwordHash,
-        role: 'SALES',
+        role: UserRole.SALES, // 🌟 使用強型別 Enum 而不是純字串
         commissionRate: dto.commissionRate || 0,
       },
       select: { id: true, email: true, role: true, commissionRate: true, createdAt: true }
@@ -44,12 +45,10 @@ export class UserService {
     });
   }
 
-  // 🌟 新增：自動結算全公司業務的業績與抽成
   async getCommissions(yearMonth?: string) {
     const tenantId = this.cls.get('tenant_id') as string;
     const userRole = this.cls.get('user_role') as string;
 
-    // 🛡️ 權限防護：只有老闆可以算薪水
     if (userRole !== 'BOSS') {
       throw new ForbiddenException('權限不足：只有老闆 (BOSS) 有權限查看業績結算');
     }
@@ -64,15 +63,23 @@ export class UserService {
       endDate = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
     }
 
-    // 撈出所有業務員
+    // 🌟 使用強型別 Enum 進行搜尋
     const users = await this.prisma.client.user.findMany({
-      where: { tenantId, role: 'SALES' },
+      where: { tenantId, role: UserRole.SALES }, 
       select: { id: true, email: true, commissionRate: true }
     });
 
-    const result = [];
+    // 🌟 關鍵修復 2：明確宣告 result 陣列裡面裝的物件結構 (解決 implicitly any[] 報錯)
+    const result: {
+      userId: string;
+      email: string;
+      commissionRate: number;
+      shipmentCount: number;
+      grossProfit: number;
+      commission: number;
+    }[] = [];
+
     for (const user of users) {
-      // 找出該業務在這個月建立的單
       const shipments = await this.prisma.client.shipment.findMany({
         where: {
           tenantId,
@@ -86,7 +93,6 @@ export class UserService {
       let totalAR = 0;
       let totalAP = 0;
 
-      // 計算這些單的總毛利
       if (shipmentIds.length > 0) {
         const charges = await this.prisma.client.charge.findMany({
           where: { tenantId, shipmentId: { in: shipmentIds } },
@@ -100,7 +106,6 @@ export class UserService {
       }
 
       const grossProfit = totalAR - totalAP;
-      // 毛利大於 0 才給抽成
       const commission = grossProfit > 0 ? grossProfit * (Number(user.commissionRate) / 100) : 0;
 
       result.push({

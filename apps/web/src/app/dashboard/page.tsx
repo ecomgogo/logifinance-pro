@@ -2,11 +2,13 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-// 🌟 確保這裡有 Award 圖示
-import { Ship, Plane, LogOut, Loader2, Package, TrendingUp, DollarSign, X, Users, Settings, Award } from 'lucide-react';
+// 🌟 引入 Download 圖示
+import { Ship, Plane, LogOut, Loader2, Package, TrendingUp, DollarSign, X, Users, Settings, Award, Download } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+// 🌟 引入我們剛寫好的匯出工具
+import { exportToCSV } from '@/lib/export'; 
 
 interface Shipment {
   id: string;
@@ -76,6 +78,20 @@ export default function DashboardPage() {
     }
   };
 
+  // 🌟 新增：一鍵匯出運單資料為 CSV
+  const handleExport = () => {
+    const exportData = shipments.map(s => ({
+      '內部單號': s.internalNo,
+      '運輸類型': s.type === 'OCEAN' ? '海運 (Ocean)' : '空運 (Air)',
+      '主單號 (MBL)': s.mblNumber || '無',
+      '建立時間': new Date(s.createdAt).toLocaleDateString('zh-TW'),
+      '系統紀錄ID': s.id
+    }));
+    
+    const today = new Date().toISOString().split('T')[0];
+    exportToCSV(exportData, `業務單總表_${today}`);
+  };
+
   const totalShipments = shipments.length;
   const oceanCount = shipments.filter(s => s.type === 'OCEAN').length;
   const airCount = shipments.filter(s => s.type === 'AIR').length;
@@ -137,7 +153,6 @@ export default function DashboardPage() {
             <button onClick={() => router.push('/dashboard/team')} className="text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-white py-1 transition-colors flex items-center gap-1.5">
               <Settings size={16} /> 團隊管理
             </button>
-            {/* 🌟 新增：業績結算入口 */}
             <button onClick={() => router.push('/dashboard/commissions')} className="text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-white py-1 transition-colors flex items-center gap-1.5">
               <Award size={16} /> 業績結算
             </button>
@@ -154,15 +169,13 @@ export default function DashboardPage() {
             <h1 className="text-2xl font-bold text-zinc-900 dark:text-white mb-1">營運儀表板</h1>
             <p className="text-zinc-500 dark:text-zinc-400 text-sm">歡迎回來，這是您公司目前的即時營運狀況。</p>
           </div>
-          <div className="flex gap-3">
-            <button onClick={() => router.push('/dashboard/commissions')} className="md:hidden bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-800 px-4 py-2.5 rounded-lg font-medium shadow-sm flex items-center gap-2 text-sm">
-              <Award size={16} /> 結算
+          <div className="flex flex-wrap gap-3">
+            {/* 🌟 匯出按鈕放置於此 */}
+            <button onClick={handleExport} className="bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-800 px-4 py-2.5 rounded-lg font-medium shadow-sm flex items-center gap-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors">
+              <Download size={16} /> 匯出報表
             </button>
-            <button onClick={() => router.push('/dashboard/team')} className="md:hidden bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-800 px-4 py-2.5 rounded-lg font-medium shadow-sm flex items-center gap-2 text-sm">
-              <Settings size={16} /> 團隊
-            </button>
-            <button onClick={() => setIsModalOpen(true)} className="bg-black dark:bg-white text-white dark:text-black px-5 py-2.5 rounded-lg font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all shadow-md active:scale-95">
-              + 新增業務單
+            <button onClick={() => setIsModalOpen(true)} className="bg-black dark:bg-white text-white dark:text-black px-5 py-2.5 rounded-lg font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all shadow-md active:scale-95 flex items-center gap-2 text-sm">
+              <Plus size={16} /> 新增業務單
             </button>
           </div>
         </div>
